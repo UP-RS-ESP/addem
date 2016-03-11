@@ -1,7 +1,7 @@
 Analysis of Distributions from Digital Elevation Models (ADDEM)
 ---------------------------------------------------------------
 
-This repository contains a Python implementation of ongoing efforts top
+This repository contains a Python implementation of ongoing efforts to
 analyse the distributions of slopes and curvatures of Digital Elevation
 Models (DEMs) in the hope that these would be able to provide a more
 wholesome perspective that can supplement the traditional approaches which
@@ -14,7 +14,7 @@ Objectives
 ----------
 
 The suite of Python codes in this repository has two main objectives: (i) a
-high-speed, parallelised Python implementation of traditional Dem analyses
+high-speed, parallelised Python implementation of traditional DEM analyses
 such as sink filling, flow direction estimation, flow accumulation
 estimation, etc., and (ii) to create a suite of new functions that enable
 the end-user to analyse the distributions of various geophysically relevant
@@ -169,5 +169,5 @@ About this file
 ---------------
 
 Created: Wed Mar 09, 2016  03:23PM
-Last modified: Fri Mar 11, 2016  01:04PM
+Last modified: Fri Mar 11, 2016  04:09PM
 
