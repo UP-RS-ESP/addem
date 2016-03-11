@@ -96,6 +96,15 @@ Now, open a new terminal and update the changes to ``~/bashrc`` by running:
 ```
 You can do the same for the ``~/.bash_profile`` as well.
 
+**Note**
+In some cases, if you are running a script ``script.py`` which needs to use
+the ``addem`` module, the above might not work. In this case, you need to
+add the following line to your ``~/.bashrc`` as well.
+
+```bash
+export PYTHONPATH=$HOME/dev_proj/addem
+```
+
 That's it! Now you are ready to use the ``addem`` module.
 
 
@@ -160,5 +169,5 @@ About this file
 ---------------
 
 Created: Wed Mar 09, 2016  03:23PM
-Last modified: Fri Mar 11, 2016  11:23AM
+Last modified: Fri Mar 11, 2016  01:04PM
 
