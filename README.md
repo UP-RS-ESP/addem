@@ -1,6 +1,5 @@
-# addem
 Analysis of Distributions from Digital Elevation Models (ADDEM)
-===============================================================
+---------------------------------------------------------------
 
 This repository contains a Python implementation of ongoing efforts top
 analyse the distributions of slopes and curvatures of Digital Elevation
@@ -40,15 +39,95 @@ categories of *goals* for the project:
 * Representation, abstraction and analysis of probability distributions
 * Release of the code as a cross-platform software package
 
+Installation
+------------
+
+As this project is still in its development, we are going to use a hackish
+of way of downloading and using it. First, clone this GIT repository to a
+local directory ``dev_proj`` of your choice by:
+
+```bash
+cd ~
+mkdir ~/dev_prj # make new directory 'dev_proj' in your home folder
+cd dev_proj/
+git clone https://github.com/bedartha/addem.git
+```
+
+The next step is to add the above directory where you have the ``addem``
+codes to your default Python paths list, which is the list of directory
+locations on your computer where Python searches for modules. For this you
+need to create a ``.pythonstartup`` file in your home directory and specify
+a new environment variable ``PYTHONSTARTUP`` which stores the location of
+this variable.
+
+```bash
+cd ~
+touch .pythonstartup
+```
+
+Now open the above file with your preferred text editor and add the
+following bit of Python code in it and save the changes.
+
+```python
+import sys, os
+home = os.path.expanduser("~")
+sys.path.append(home + "/dev_proj/addem/")
+del sys, os
+```
+
+**Note that normally it is not recommended to change the contents of your
+``sys.path``!!** However, until we develop a fully functional suite of codes
+that can be shipped with a working ``setup.py`` file, this is a simple way
+out for us to share the functionality of the codes given in this repository.
+
+Finally, open your profile file (which is typically ``~/.bashrc`` on Linux
+machines and ``~/.bash_profile`` on Mac OS X computers), and add the
+following lines of code to it.
+
+```bash
+# setting the PYTHONSTARTUP variable for custom Python settins on start
+export PYTHONSTARTUP=$HOME/.pythonstartup
+```
+
+Now, open a new terminal and update the changes to ``~/bashrc`` by running:
+
+```bash
+. ~/.bashrc
+```
+You can do the same for the ``~/.bash_profile`` as well.
+
+That's it! Now you are ready to use the ``addem`` module.
+
+
+Usage
+-----
+
+After including the proper path in the Python paths list, you can simply
+``import addem`` as a module and test out the dummy ``hello``
+functions given in the submodules ``addem.distributions`` and
+``addem.flows``.
+
+```python
+import addem
+addem.distributions.hello()
+# Hello! I am the 'addem.distributions' module!
+addem.flows.hello()
+#Hello! I am the 'addem.flows' module!
+```
+
+You can query the help documentation about the entire module or its
+submodules as well.
+
+```python
+help(addem) # shows help documentation on the entire module
+help(addem.flows) # shows help documentation on the flows submodule
+```
+
 Code Example
 ------------
 
 *coming soon*
 
-Installation
-------------
-
-*coming soon*
 
 License
 -------
@@ -81,5 +160,5 @@ About this file
 ---------------
 
 Created: Wed Mar 09, 2016  03:23PM
-Last modified: Thu Mar 10, 2016  02:12PM
+Last modified: Fri Mar 11, 2016  11:23AM
 
