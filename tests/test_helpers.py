@@ -2,27 +2,31 @@
 TEST_HELPERS.PY
 
 Created: Fri Mar 11, 2016  02:10PM
-Last modified: Mon Mar 14, 2016  04:57PM
+Last modified: Tue Mar 15, 2016  02:04PM
 
 """
 
 import numpy as np
 
-def flatland_with_sinks(size=1000, num_sinks=5000):
+def landscape_with_sinks(size=1000, num_sinks=500):
     """
     Creates a flat square landscape with sinks.
     """
-    sink_offset = 0.5
-    flatland = np.ones((size, size))
-    fl_size = flatland.size
-    fl_inner_size = fl_size - 2 * (size + (size - 2))
-    sink_indices = _randint_unique(lo=0, hi=fl_inner_size, size=num_sinks)
-    r, c = indices_1d_to_2d(sink_indices, shape=(size - 2, size - 2))
-    for k in range(num_sinks):
-        i, j = r[k], c[k]
-        m = minimum_of_nbrs(flatland, i, j)
-        flatland[i, j] = sink_offset * m
-    return flatland, (r, c)
+    block = np.array([
+                     [10, 12, 13, 14, 15, 17],
+                     [23, 25, 26, 27, 28, 29],
+                     [31, 34, 36, 37, 38, 39],
+                     [41, 43, 45, 46, 47, 49],
+                     [51, 52, 53, 55, 56, 58],
+                     [60, 61, 63, 64, 66, 67],
+                     ]
+                    )
+    rows, cols = [1, 2, 4], [3, 1, 4]
+    block[rows, cols] = -5
+    block = np.c_[block, block[:, ::-1]]
+    landscape = np.r_[block, block[::-1, :]]
+    rows, cols = np.where(landscape == -5.)
+    return landscape, (rows, cols)
 
 def _randint_unique(lo=0, hi=10, size=5):
     """
@@ -47,14 +51,26 @@ def minimum_of_nbrs(arr, r, c):
     """
     Minimum of all the neighbours of the entry located at [r,c] in arr.
     """
-    m = min(
-                arr[ r + 1, c ],
-                arr[ r - 1, c ],
-                arr[ r, c + 1 ],
-                arr[ r, c - 1 ],
-                arr[ r + 1 , c + 1 ],
-                arr[ r + 1 , c - 1 ],
-                arr[ r - 1 , c - 1 ],
-                arr[ r - 1 , c + 1 ],
-            )
-    return m
+    return arr[neighbours(r, c)].min()
+
+def neighbours(r, c):
+    """
+    Returns the indices of eight neighbours for array entry at [r, c].
+    """
+    rows = [r + 1, 
+            r - 1, 
+            r, 
+            r, 
+            r + 1, 
+            r + 1,
+            r - 1, 
+            r - 1]
+    cols = [c, 
+            c, 
+            c + 1, 
+            c - 1, 
+            c + 1, 
+            c - 1, 
+            c + 1, 
+            c - 1]
+    return rows, cols
