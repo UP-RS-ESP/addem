@@ -2,7 +2,7 @@
 TEST_HELPERS.PY
 
 Created: Fri Mar 11, 2016  02:10PM
-Last modified: Tue Mar 15, 2016  02:04PM
+Last modified: Wed Mar 16, 2016  12:51PM
 
 """
 
@@ -57,14 +57,14 @@ def neighbours(r, c):
     """
     Returns the indices of eight neighbours for array entry at [r, c].
     """
-    rows = [r + 1, 
-            r - 1, 
-            r, 
-            r, 
+    rows = [r - 1, 
             r + 1, 
-            r + 1,
+            r, 
+            r, 
             r - 1, 
-            r - 1]
+            r - 1,
+            r + 1, 
+            r + 1]
     cols = [c, 
             c, 
             c + 1, 
