@@ -2,13 +2,35 @@
 TEST_HELPERS.PY
 
 Created: Fri Mar 11, 2016  02:10PM
-Last modified: Wed Mar 16, 2016  12:51PM
+Last modified: Tue Mar 22, 2016  11:05AM
 
 """
 
 import numpy as np
 
-def landscape_with_sinks(size=1000, num_sinks=500):
+def landscape_with_sinks():
+    """
+    Creates a square landscape with sinks and depressions.
+
+    This example is taken from the Fill sinks algorithm given at:
+    http://spatial-analyst.net/ILWIS/htm/ilwisapp/fill_sinks_algorithm.htm
+    """
+    height = np.array([
+                       [2, 2, 4, 5, 6, 6, 8, 6, 5],
+                       [3, 3, 5, 5, 5, 5, 7, 6, 4],
+                       [5, 5, 4, 5, 4, 4, 7, 8, 6],
+                       [4, 4, 4, 3, 3, 3, 5, 7, 8],
+                       [2, 3, 3, 3, 1, 3, 4, 5, 6],
+                       [4, 4, 3, 2, 2, 3, 4, 7, 7],
+                       [3, 4, 4, 2, 2, 3, 6, 8, 9],
+                       [2, 3, 4, 4, 4, 4, 5, 9, 7],
+                       [2, 2, 3, 4, 4, 5, 6, 8, 7],
+                       ],
+                       dtype="float64"
+            )
+    return height
+
+def __landscape_with_sinks(size=1000, num_sinks=500):
     """
     Creates a flat square landscape with sinks.
     """

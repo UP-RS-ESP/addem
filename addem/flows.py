@@ -2,7 +2,7 @@
 FLOWS.PY
 
 Created: Thu Mar 10, 2016  01:55PM
-Last modified: Mon Mar 21, 2016  03:00PM
+Last modified: Wed Mar 23, 2016  04:37PM
 
 """
 
@@ -14,27 +14,16 @@ def hello():
     print "Hello! I am the 'addem.flows' module!"
     return None
 
-def locate_sinks(arr, verbose=False):
+def sink_filling(arr, verbose=False):
     """
-    Identify sinks in given DEM array.
-    """
-    if type(arr) is np.ma.core.MaskedArray:
-        arr = arr.data
-    arr = arr.astype("float64")
-    ns, row, col = sinks.locate(arr)
-    return ns, row, col
-
-def fill_sinks(arr, ns=None, row=None, col=None, verbose=False):
-    """
-    Fill sinks in given DEM array.
+    Finds and fills sinks in given DEM array.
     """
     if type(arr) is np.ma.core.MaskedArray:
         arr = arr.data
     arr = arr.astype("float64")
-    if ns is None:
-        if row is None or col is None:
-            raise "Row / column indices are needed!"
-        ns, row, col = sinks.locate(arr)
-    sink_filled_arr = sinks.fill(arr, ns, row, col)
-    return sink_filled_arr
+    ns, row, col, fval = sinks.find_single_pixel(arr)
+    filled_arr = sinks.fill_single_pixel(arr, ns, row, col, fval)
+    sink_list, c_list, fval, outlet = sinks.find_multi_pixel(filled_arr)
+    filled_arr_final = sinks.fill_multi_pixel(filled_arr, sink_list, fval)
+    return filled_arr_final, ns, row, col, fval
 
