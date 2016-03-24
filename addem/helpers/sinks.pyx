@@ -2,7 +2,7 @@
 SINKS.PYX
 
 Created: Wed Mar 16, 2016  02:41PM
-Last modified: Wed Mar 23, 2016  04:37PM
+Last modified: Thu Mar 24, 2016  05:12PM
 
 """
 
@@ -100,11 +100,14 @@ def find_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None):
                         )
                 if arr[i, j] == m:
                     sink = [(i, j)]
-                    catchment = []
-                    _, sink, catchment, visited = plateau_at(arr, i, j, m, 
-                                                             sink, catchment, 
-                                                             visited)
-                    catchment, visited = sink_catchment(arr, catchment,
+                    visited = [(i, j)]
+                    catch = []
+                    s, c, v = plateau_at(arr, i, j, m, sink, catch, visited)
+                    #catchment = []
+                    #_, sink, catchment, visited = plateau_at(arr, i, j, m, 
+                    #                                         sink, catchment, 
+                    #                                         visited)
+                    catchment, visited = sink_catchment(arr, c,
                                                         visited)
                     f, outlet = fill_value_multi_pixel(arr, catchment, sink)
                     sinks[k] = sink
@@ -123,42 +126,40 @@ def plateau_at(np.ndarray[FLOAT_t, ndim=2] arr not None,
     """
     Returns the plateau region in given array starting at position i, j.
     """
-    cdef tuple loc
-    cdef list o_nb
+    cdef int nx = arr.shape[0]
+    cdef int ny = arr.shape[1]
+    cdef list i_range, j_range
     cdef int ii, jj
-    sink_nbr, sink, catchment, visited  = sink_neighbours(arr, 
-                                                          i, j, m, 
-                                                          sink, catchment,
-                                                          visited)
-    if sink_nbr is not []:
-        for loc in sink_nbr:
-            ii = loc[0]
-            jj = loc[1]
-            s_nb, sink, catchment, visited = plateau_at(arr, 
-                                                        ii, jj, m, 
-                                                        sink, catchment, 
-                                                        visited)
-    return sink_nbr, sink, catchment, visited
-
-def sink_neighbours(np.ndarray[FLOAT_t, ndim=2] arr not None,
-                    int i, int j, float m,
-                    list sink, list catchment, list visited,
-                    ):
-    """
-    Returns the sink neighbours (part of same sink) for position i, j.
-    """
-    cdef list sink_nbr = []
-    cdef Py_ssize_t ii, jj
-    for ii in range(i - 1, i + 2):
-        for jj in  range(j - 1, j + 2):
-            if (ii, jj) not in visited:
-                if arr[ii, jj] == m:
-                    sink_nbr.append((ii, jj))
-                    sink.append((ii, jj))
-                else:
-                    catchment.append((ii, jj))
-                visited.append((ii, jj))
-    return sink_nbr, sink, catchment, visited
+    cdef int u, v
+    cdef list locs = [0] * 9
+    cdef Py_ssize_t idx_locs, k
+    trapped = False
+    while not trapped:
+        k = 0
+        i_range, j_range = neighbour_indices(i, j, nx, ny)
+        for u in i_range:
+            for v in j_range:
+                locs[k] = (u, v)
+                k += 1
+        locs = locs[:k]
+        idx_locs = 0
+        found_new_loc = False
+        while not found_new_loc and not trapped:
+            if idx_locs < k:
+                loc = locs[idx_locs]
+                if loc not in visited:
+                    if arr[loc] == m:
+                        sink.append(loc)
+                        i = loc[0]
+                        j = loc[1]
+                        found_new_loc = True
+                    else:
+                        catchment.append(loc)
+                    visited.append(loc)
+                idx_locs += 1
+            else:
+                trapped = True
+    return sink, catchment, visited
 
 def sink_catchment(np.ndarray[FLOAT_t, ndim=2] arr not None,
                    list catchment, list visited,
@@ -166,27 +167,95 @@ def sink_catchment(np.ndarray[FLOAT_t, ndim=2] arr not None,
     """
     Returns the catchment area for the given sink in the given array.
     """
-    cdef tuple loc
+    cdef int nx = arr.shape[0]
+    cdef int ny = arr.shape[1]
+    cdef list i_range, j_range
     cdef int ii, jj
-    cdef list out_nbrs = []
-    cdef list o_nb
-    cdef tuple idx = ([], [])
-    cdef list sortidx
-    for loc in catchment:
-        idx[0].append(loc[0])
-        idx[1].append(loc[1])
-    sortidx = np.argsort(arr[idx]).tolist()
-    for kk in sortidx:
-        loc = catchment[kk]
-        ii = loc[0]
-        jj = loc[1]
-        o_nb, catchment, visited = out_neighbours(arr, ii, jj, 
-                                                  catchment, visited)
-        out_nbrs.extend(o_nb)
-    if out_nbrs != []:
-        o_nb, visited = sink_catchment(arr, out_nbrs, visited)
-        catchment.extend(o_nb)
+    cdef int u, v
+    cdef Py_ssize_t idx_locs, k
+    trapped = False
+    cdef int stop = 0
+    cdef int nc = 0
+    idx_locs = 0
+    cdef tuple loc
+    cdef list nbrs
+    cdef tuple nbr
+    while not trapped:
+        loc = catchment[idx_locs]
+        m = arr[loc]
+        k = 0
+        i_range, j_range = neighbour_indices(loc[0], loc[1], nx, ny)
+        nbrs = [0] * 9
+        for u in i_range:
+            for v in j_range:
+                nbrs[k] = (u, v)
+                k += 1
+        nbrs = nbrs[:k]
+        dead_end = True
+        for nbr in nbrs:
+            if nbr not in visited:
+                if arr[nbr] >= m:
+                    dead_end= False
+                    catchment.append(nbr)
+                visited.append(nbr)
+        nc = len(catchment)
+        if dead_end:
+            idx_locs += 1
+        if idx_locs == nc:
+            trapped = True
     return catchment, visited
+#        m = arr[i, j]
+#        k = 0
+#        i_range, j_range = neighbour_indices(i, j, nx, ny)
+#        for u in i_range:
+#            for v in j_range:
+#                locs[k] = (u, v)
+#                k += 1
+#        locs = locs[:k]
+#        idx_locs = 0
+#        found_new_loc = False
+#        print "new round, new locs for ", i, j
+#        print "catchment uptil now: ", catchment
+#        while not found_new_loc and not trapped:
+#            if idx_locs < k:
+#                loc = locs[idx_locs]
+#                if loc not in visited:
+#                    if arr[loc] >= m:
+#                        catchment.append(loc)
+#                        i = loc[0]
+#                        j = loc[1]
+#                        found_new_loc = True
+#                    #else:
+#                    #    catchment.append(loc)
+#                    visited.append(loc)
+#                idx_locs += 1
+#            else:
+#                trapped = True
+#            #print stop, loc, found_new_loc, trapped
+#            stop += 1
+#            if stop == 30: sys.exit()
+#    return catchment, visited
+#    cdef tuple loc
+#    cdef int ii, jj
+#    cdef list out_nbrs = []
+#    cdef list o_nb
+#    cdef tuple idx = ([], [])
+#    cdef list sortidx
+#    for loc in catchment:
+#        idx[0].append(loc[0])
+#        idx[1].append(loc[1])
+#    sortidx = np.argsort(arr[idx]).tolist()
+#    for kk in sortidx:
+#        loc = catchment[kk]
+#        ii = loc[0]
+#        jj = loc[1]
+#        o_nb, catchment, visited = out_neighbours(arr, ii, jj, 
+#                                                  catchment, visited)
+#        out_nbrs.extend(o_nb)
+#    if out_nbrs != []:
+#        o_nb, visited = sink_catchment(arr, out_nbrs, visited)
+#        catchment.extend(o_nb)
+#    return catchment, visited
 
 def out_neighbours(np.ndarray[FLOAT_t, ndim=2] arr not None,
                    int i, int j,
@@ -303,4 +372,26 @@ def fill_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
             arr[loc] = f
         k += 1
     return arr
+
+def neighbour_indices(int i, int j, int nx, int ny):
+    """
+    Returns indices of neighbours depending on the location of (i, j).
+    """
+    cdef list i_range
+    cdef list j_range
+    if i == 0:
+        i_range = range(i, i + 2)
+    elif i == nx - 1:
+        i_range = range(nx - 2, nx)
+    else:
+        i_range = range(i - 1, i + 2)
+    if j == 0:
+        j_range = range(j, j + 2)
+    elif j == ny - 1:
+        j_range = range(ny - 2, ny)
+    else:
+        j_range = range(j - 1, j + 2)
+    return i_range, j_range
+
+
 
