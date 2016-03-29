@@ -2,7 +2,7 @@
 SINKS.PYX
 
 Created: Wed Mar 16, 2016  02:41PM
-Last modified: Thu Mar 24, 2016  05:12PM
+Last modified: Tue Mar 29, 2016  06:13PM
 
 """
 
@@ -19,7 +19,8 @@ def hello():
     print "Hello! I am the 'addem.helpers.sinks' module!"
     return None
 
-def find_single_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None):
+def find_single_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
+                      float fill_val):
     """
     Finds single-pixel depressions in given DEM array.
     """
@@ -32,22 +33,25 @@ def find_single_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None):
     cdef np.ndarray[INT_t, ndim=1] row = np.zeros([max_ns], dtype=INT)
     cdef np.ndarray[INT_t, ndim=1] col = np.zeros([max_ns], dtype=INT)
     cdef np.ndarray[FLOAT_t, ndim=1] fval = np.zeros([max_ns], dtype=FLOAT)
+    cdef undefined = False
     k = 0
     for i in range(1, nx - 1):
         for j in range(1, ny - 1):
-            m = min(# minimum of neighbours
-                    arr[i-1, j], arr[i+1, j],       # north & south
-                    arr[i, j-1], arr[i, j+1],       # east & west
-                    arr[i-1, j-1], arr[i-1, j+1],   # nw & ne
-                    arr[i+1, j-1], arr[i+1, j+1]    # sw & se
-                    )
-            # sinks_1px := array entries which are less than min. of nbrs
-            if arr[i, j] < m:
-                row[k] = i
-                col[k] = j
-                fval[k] = m
-                k += 1
-                ns += 1
+            if arr[i, j] is not fill_val:
+                m = min(# minimum of neighbours
+                        arr[i-1, j], arr[i+1, j],       # north & south
+                        arr[i, j-1], arr[i, j+1],       # east & west
+                        arr[i-1, j-1], arr[i-1, j+1],   # nw & ne
+                        arr[i+1, j-1], arr[i+1, j+1]    # sw & se
+                        )
+                if m is not fill_val: # i.e. (i, j) not at border
+                    # sinks_1px := array entries less than min. of nbrs
+                    if arr[i, j] < m:
+                        row[k] = i
+                        col[k] = j
+                        fval[k] = m
+                        k += 1
+                        ns += 1
     row = row[:k]
     col = col[:k]
     fval = fval[:k]
@@ -69,7 +73,8 @@ def fill_single_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
         arr[row[k], col[k]] = fval[k]
     return arr
 
-def find_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None):
+def find_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
+                     float fill_val):
     """
     Finds multi-pixel depressions in given DEM array.
     """
@@ -91,29 +96,34 @@ def find_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None):
     k = 0
     for i in range(1, nx - 1):
         for j in range(1, ny - 1):
-            if (i, j) not in visited:
-                m = min(# minimum of neighbours
-                        arr[i-1, j], arr[i+1, j],       # north & south
-                        arr[i, j-1], arr[i, j+1],       # east & west
-                        arr[i-1, j-1], arr[i-1, j+1],   # nw & ne
-                        arr[i+1, j-1], arr[i+1, j+1]    # sw & se
-                        )
-                if arr[i, j] == m:
-                    sink = [(i, j)]
-                    visited = [(i, j)]
-                    catch = []
-                    s, c, v = plateau_at(arr, i, j, m, sink, catch, visited)
-                    #catchment = []
-                    #_, sink, catchment, visited = plateau_at(arr, i, j, m, 
-                    #                                         sink, catchment, 
-                    #                                         visited)
-                    catchment, visited = sink_catchment(arr, c,
-                                                        visited)
-                    f, outlet = fill_value_multi_pixel(arr, catchment, sink)
-                    sinks[k] = sink
-                    catchments[k] = catchment
-                    fval[k] = f
-                    k += 1
+            if arr[i, j] is not fill_val:
+                if (i, j) not in visited:
+                    m = min(# minimum of neighbours
+                            arr[i-1, j], arr[i+1, j],       # north & south
+                            arr[i, j-1], arr[i, j+1],       # east & west
+                            arr[i-1, j-1], arr[i-1, j+1],   # nw & ne
+                            arr[i+1, j-1], arr[i+1, j+1]    # sw & se
+                            )
+                    if m is not fill_val:
+                        if arr[i, j] == m:
+                            sink = [(i, j)]
+                            visited = [(i, j)]
+                            catch = []
+                            print "plateau at (%d, %d) ..."%(i, j)
+                            s, c, v = plateau_at(arr, i, j, m,
+                                                 sink, catch, visited)
+                            print "...identified with %d pixels"%len(s)
+                            print "catchment at (%d, %d)..."%(i, j)
+                            catchment, visited = sink_catchment(arr, m, c,
+                                                                visited,
+                                                                fill_val)
+                            f, outlet = fill_value_multi_pixel(arr,
+                                                               catchment,
+                                                               sink)
+                            sinks[k] = sink
+                            catchments[k] = catchment
+                            fval[k] = f
+                            k += 1
     sinks = sinks[:k]
     catchments = catchments[:k]
     fval = fval[:k]
@@ -129,13 +139,13 @@ def plateau_at(np.ndarray[FLOAT_t, ndim=2] arr not None,
     cdef int nx = arr.shape[0]
     cdef int ny = arr.shape[1]
     cdef list i_range, j_range
-    cdef int ii, jj
     cdef int u, v
-    cdef list locs = [0] * 9
+    cdef list locs
     cdef Py_ssize_t idx_locs, k
     trapped = False
     while not trapped:
         k = 0
+        locs = [0] * 9
         i_range, j_range = neighbour_indices(i, j, nx, ny)
         for u in i_range:
             for v in j_range:
@@ -144,7 +154,7 @@ def plateau_at(np.ndarray[FLOAT_t, ndim=2] arr not None,
         locs = locs[:k]
         idx_locs = 0
         found_new_loc = False
-        while not found_new_loc and not trapped:
+        while not found_new_loc:
             if idx_locs < k:
                 loc = locs[idx_locs]
                 if loc not in visited:
@@ -158,11 +168,12 @@ def plateau_at(np.ndarray[FLOAT_t, ndim=2] arr not None,
                     visited.append(loc)
                 idx_locs += 1
             else:
+                found_new_loc = True
                 trapped = True
     return sink, catchment, visited
 
-def sink_catchment(np.ndarray[FLOAT_t, ndim=2] arr not None,
-                   list catchment, list visited,
+def sink_catchment(np.ndarray[FLOAT_t, ndim=2] arr not None, float m,
+                   list catchment, list visited, float fill_val,
                    ):
     """
     Returns the catchment area for the given sink in the given array.
@@ -171,125 +182,87 @@ def sink_catchment(np.ndarray[FLOAT_t, ndim=2] arr not None,
     cdef int ny = arr.shape[1]
     cdef list i_range, j_range
     cdef int ii, jj
-    cdef int u, v
-    cdef Py_ssize_t idx_locs, k
+    cdef Py_ssize_t idx_locs, k, u, v, i, j
     trapped = False
-    cdef int stop = 0
     cdef int nc = 0
     idx_locs = 0
     cdef tuple loc
     cdef list nbrs
     cdef tuple nbr
+
+#    # first identify those points which are greater than m
+#    cdef Py_ssize_t i, j
+#    cdef list checklist = []
+#    for i in range(1, nx - 1):
+#        for j in range(1, ny - 1):
+#            if arr[i, j] is not fill_val:
+#                x = min(# minimum of neighbours
+#                        arr[i-1, j], arr[i+1, j],       # north & south
+#                        arr[i, j-1], arr[i, j+1],       # east & west
+#                        arr[i-1, j-1], arr[i-1, j+1],   # nw & ne
+#                        arr[i+1, j-1], arr[i+1, j+1]    # sw & se
+#                        )
+#                if x is not fill_val:
+#                    if (i, j) not in visited:
+#                        if arr[i, j] > m:
+#                            checklist.append((i, j))
+#    import sys
+#    print len(checklist)
+#    print nx * ny
+#    sys.exit()
+    cdef float x
+    cdef int stop = 0
     while not trapped:
         loc = catchment[idx_locs]
-        m = arr[loc]
+        x = arr[loc]
+        # get neighbour list
+        # writing the entire function here to save some overhead
+        i = loc[0]
+        j = loc[1]
+        if i == 0:
+            i_range = range(i, i + 2)
+        elif i == nx - 1:
+            i_range = range(nx - 2, nx)
+        else:
+            i_range = range(i - 1, i + 2)
+        if j == 0:
+            j_range = range(j, j + 2)
+        elif j == ny - 1:
+            j_range = range(ny - 2, ny)
+        else:
+            j_range = range(j - 1, j + 2)
         k = 0
-        i_range, j_range = neighbour_indices(loc[0], loc[1], nx, ny)
         nbrs = [0] * 9
         for u in i_range:
             for v in j_range:
                 nbrs[k] = (u, v)
                 k += 1
         nbrs = nbrs[:k]
-        dead_end = True
+        # go through the nbr list and add to catchment if necessary
         for nbr in nbrs:
-            if nbr not in visited:
-                if arr[nbr] >= m:
-                    dead_end= False
+            if nbr not in catchment:
+                if arr[nbr] >= x:
                     catchment.append(nbr)
-                visited.append(nbr)
+                    stop += 1
+        idx_locs += 1
         nc = len(catchment)
-        if dead_end:
-            idx_locs += 1
         if idx_locs == nc:
             trapped = True
+        if stop % 1000 == 0:
+            print stop
+        if stop in [5000, 50000, 51000, 52000, 53000, 54000, 55000]:
+            print "plotting..."
+            import matplotlib.pyplot as pl
+            arr[arr==fill_val] = np.nan
+            pl.imshow(arr)
+            for i in range(nc):
+                pl.plot(catchment[i][1], catchment[i][0],
+                        "ks", mec="none", ms=0.75, alpha=0.5)
+            pl.show()
+            import sys
+            sys.exit()
+    visited.extend(catchment)
     return catchment, visited
-#        m = arr[i, j]
-#        k = 0
-#        i_range, j_range = neighbour_indices(i, j, nx, ny)
-#        for u in i_range:
-#            for v in j_range:
-#                locs[k] = (u, v)
-#                k += 1
-#        locs = locs[:k]
-#        idx_locs = 0
-#        found_new_loc = False
-#        print "new round, new locs for ", i, j
-#        print "catchment uptil now: ", catchment
-#        while not found_new_loc and not trapped:
-#            if idx_locs < k:
-#                loc = locs[idx_locs]
-#                if loc not in visited:
-#                    if arr[loc] >= m:
-#                        catchment.append(loc)
-#                        i = loc[0]
-#                        j = loc[1]
-#                        found_new_loc = True
-#                    #else:
-#                    #    catchment.append(loc)
-#                    visited.append(loc)
-#                idx_locs += 1
-#            else:
-#                trapped = True
-#            #print stop, loc, found_new_loc, trapped
-#            stop += 1
-#            if stop == 30: sys.exit()
-#    return catchment, visited
-#    cdef tuple loc
-#    cdef int ii, jj
-#    cdef list out_nbrs = []
-#    cdef list o_nb
-#    cdef tuple idx = ([], [])
-#    cdef list sortidx
-#    for loc in catchment:
-#        idx[0].append(loc[0])
-#        idx[1].append(loc[1])
-#    sortidx = np.argsort(arr[idx]).tolist()
-#    for kk in sortidx:
-#        loc = catchment[kk]
-#        ii = loc[0]
-#        jj = loc[1]
-#        o_nb, catchment, visited = out_neighbours(arr, ii, jj, 
-#                                                  catchment, visited)
-#        out_nbrs.extend(o_nb)
-#    if out_nbrs != []:
-#        o_nb, visited = sink_catchment(arr, out_nbrs, visited)
-#        catchment.extend(o_nb)
-#    return catchment, visited
-
-def out_neighbours(np.ndarray[FLOAT_t, ndim=2] arr not None,
-                   int i, int j,
-                   list catchment, list visited,
-                   ):
-    """
-    Returns the outward neighbours (part of same sink) for position i, j.
-    """
-    cdef int nx = arr.shape[0]
-    cdef int ny = arr.shape[1]
-    cdef float m = arr[i, j]
-    cdef list out_nbr = []
-    cdef list i_range, j_range
-    cdef Py_ssize_t ii, jj
-    if i == 0:
-        i_range = range(i, i + 2)
-    elif i == nx - 1:
-        i_range = range(nx - 2, nx)
-    else:
-        i_range = range(i - 1, i + 2)
-    if j == 0:
-        j_range = range(j, j + 2)
-    elif j == ny - 1:
-        j_range = range(ny - 2, ny)
-    else:
-        j_range = range(j - 1, j + 2)
-    for ii in i_range:
-        for jj in  j_range:
-            if (ii, jj) not in visited:
-                if arr[ii, jj] >= m:
-                    out_nbr.append((ii, jj))
-                    catchment.append((ii, jj))
-                visited.append((ii, jj))
-    return out_nbr, catchment, visited
 
 def fill_value_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
                            list catchment, list sink):
