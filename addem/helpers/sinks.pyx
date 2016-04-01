@@ -2,7 +2,7 @@
 SINKS.PYX
 
 Created: Wed Mar 16, 2016  02:41PM
-Last modified: Fri Apr 01, 2016  04:26PM
+Last modified: Fri Apr 01, 2016  06:38PM
 
 """
 
@@ -87,7 +87,7 @@ def find_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
     ####################################################
     cdef int nx = arr.shape[0]
     cdef int ny = arr.shape[1]
-    cdef int max_ns = 0
+    cdef int max_sa = (nx * ny)
     cdef int n_data_pixels = 0
     cdef int ns = 0
     cdef Py_ssize_t i, j
@@ -97,6 +97,7 @@ def find_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
     cdef int way_down = 0
     cdef np.ndarray[FLOAT_t, ndim=1] nbrs = np.zeros([8], dtype=FLOAT)
     cdef np.ndarray[INT_t, ndim=2] si = np.zeros([nx, ny], dtype=INT)
+    cdef np.ndarray[INT_t, ndim=2] si_id = np.zeros([2, max_sa], dtype=INT)
     for i in range(1, nx - 1):
         for j in range(1, ny - 1):
             ####
@@ -149,8 +150,10 @@ def find_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
                     # 3.c. No way down => pixel could be part of sink
                     if way_down == 0:
                         si[i, j] = 1
-                        max_ns += 1
-    print "%d possible sink pixels found..."%max_ns
+                        si_id[0, ns] = i
+                        si_id[1, ns] = j
+                        ns += 1
+    print "%d possible sink pixels found..."%ns
     print "\t...out of a total of %d pixels in data array"%n_data_pixels
     ####################################################
     ####################################################
@@ -162,121 +165,66 @@ def find_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
     ####        3.b. "edge sinks" which exit at borders
     ####################################################
     ####################################################
-    import sys
-    sys.exit()
-    return None#ns, row, col, fval
+    cdef nv = 0
+    cdef np.ndarray[INT_t, ndim=2] sink = np.zeros([nx, ny], dtype=INT)
+    cdef np.ndarray[INT_t, ndim=2] va = np.zeros([nx, ny], dtype=INT)
+    cdef np.ndarray[INT_t, ndim=2] sa = np.zeros([nx, ny], dtype=INT)
+    cdef np.ndarray[INT_t, ndim=2] s = np.zeros([2, ns], dtype=INT)
+    for k in range(ns):
+        i = si_id[0, k]
+        j = si_id[1, k]
+        if va[i, j] == 0:
+            s, va, nv = plateau_float(arr, va, 
+                                      i, j, nx, ny, nv, n_data_pixels)
+            sink[s[0], s[1]] = 1
+    # TODO: 
+    #   1. Store the above identified sinks efficiently in a ndarray
+    #       a. This array can have a max row length
+    #       b. Another array can store the no. of elements in each row,
+    #          beyond which all remaining tail-end elements are zero.
+    #   2. Go through the above identified 'sinks' and discard the 
+    #       spurious sinks which are either hill tops, slopes, or edges
+    return None
 
-
-# def find_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
-#                      float fill_val):
-#     """
-#     Finds multi-pixel depressions in given DEM array.
-#     """
-#     cdef int nx = arr.shape[0]
-#     cdef int ny = arr.shape[1]
-#     cdef int max_ca = arr.size
-#     cdef int max_ns = max_ca // 9
-#     cdef Py_ssize_t i, j, k
-#     cdef float m, f
-#     cdef np.ndarray[FLOAT_t, ndim=1] fval = np.zeros([max_ns], dtype=FLOAT)
-#     cdef np.ndarray[INT_t, ndim=2] ca = np.zeros([nx, ny], dtype=INT)
-#     cdef np.ndarray[INT_t, ndim=2] va = np.zeros([nx, ny], dtype=INT)
-#     cdef np.ndarray[INT_t, ndim=2] ca_idx
-#     cdef list sinks = [0] * max_ns
-#     cdef list catchments = [0] * max_ns
-#     cdef list visited = []
-#     cdef list si = []
-#     k = 0
-#     cdef int nv_
-#     cdef int nv = 0
-#     cdef np.ndarray[FLOAT_t, ndim=2] tmp
-#     for i in range(1, nx - 1):
-#         for j in range(1, ny - 1):
-#             if arr[i, j] is not fill_val:
-#                 if va[i, j] == 0:
-#                     m = min(# minimum of neighbours
-#                             arr[i-1, j], arr[i+1, j],       # north & south
-#                             arr[i, j-1], arr[i, j+1],       # east & west
-#                             arr[i-1, j-1], arr[i-1, j+1],   # nw & ne
-#                             arr[i+1, j-1], arr[i+1, j+1]    # sw & se
-#                             )
-#                     if m is not fill_val:
-#                         if arr[i, j] == m:
-#                             ca_idx = np.zeros([2, max_ca], dtype=INT)
-#                             print "catchment at (%d, %d)..."%(i, j)
-#                             ca, ca_idx = catchment(arr, 
-#                                                    va,
-#                                                    i, j, nx, ny, nv,
-#                                                    m, fill_val)
-#                             print "\t...of %d pixels."%len(ca_idx[0])
-#                             si, ca, va, nv_ = sinks_in_catchment(ca, 
-#                                                                  ca_idx,
-#                                                                  va)
-#                             nv += nv_
-# #                             f, outlet = fill_value_multi_pixel(arr,
-# #                                                                catchment,
-# #                                                                si)
-# #                             sinks[k] = si
-# #                             catchments[k] = catchment
-# #                             fval[k] = f
-#                             if k == 100:
-#                                 import matplotlib.pyplot as pl
-#                                 pl.imshow(va, cmap="gray_r")
-#                                 pl.show()
-#                                 import sys
-#                                 sys.exit()
-#                             k += 1
-#                             print "catchments tackled thus far = %d"%k
-#     sinks = sinks[:k]
-#     catchments = catchments[:k]
-#     fval = fval[:k]
-#     return sinks, catchments, fval#, outlet
-
-def chech_if_sink(np.ndarray[FLOAT_t, ndim=2] arr not None, 
-                  int i, int j, int nx, int ny, int m,
-                ):
+def plateau_float(np.ndarray[FLOAT_t, ndim=2] arr not None, 
+                  np.ndarray[INT_t, ndim=2] va not None,
+                  int i, int j, int nx, int ny, int nv, int n_data_pixels,
+                  ):
     """
     Returns the plateau region in given array starting at position i, j.
     """
-#     cdef list i_range, j_range
-#     cdef list nbrs
-#     cdef tuple pos
-#     cdef Py_ssize_t u, v, k
-#     cdef max_sa = nx * ny
-#     cdef np.ndarray[INT_t, ndim=2] s_id = np.zeros([2, max_sa], dtype=INT)
-#     cdef num = 1
-#     trapped = False
-#     cdef Py_ssize_t idx = 0
-#     s_id[0, idx] = i
-#     s_id[1, idx] = j
-#     if nx == 2 and ny == 1:
-#         print "(i, j) ", i, j
-#     while not trapped:
-#         i = s_id[0, idx]
-#         j = s_id[1, idx]
-#         x = arr[i, j]
-#         # get neighbour list
-#         i_range, j_range = neighbour_indices(i, j, nx, ny)
-#         k = 0
-#         nbrs = [0] * 9
-#         for u in i_range:
-#             for v in j_range:
-#                 nbrs[k] = (u, v)
-#                 k += 1
-#         nbrs = nbrs[:k]
-#         # go through the nbr list and add to sink if necessary
-#         for pos in nbrs:
-#             if sa[pos] == 0:   # i.e. pixel is not yet in sink
-#                 if arr[pos] == m:
-#                     sa[pos] = 1
-#                     s_id[0, num] = pos[0]
-#                     s_id[1, num] = pos[1]
-#                     num += 1
-#         idx += 1
-#         if idx == num:
-#             trapped = True
-#     s_id = s_id[:, :num]
-    return None#sa, s_id
+    cdef np.ndarray[INT_t, ndim=2] nbrs
+    cdef float x
+    x = arr[i, j]
+    cdef Py_ssize_t ii, jj, k, m
+    cdef max_sa = n_data_pixels - nv
+    cdef np.ndarray[INT_t, ndim=2] s_id = np.zeros([2, max_sa], dtype=INT)
+    cdef num = 1
+    cdef Py_ssize_t idx = 0
+    s_id[0, idx] = i
+    s_id[1, idx] = j
+    trapped = False
+    while not trapped:
+        i = s_id[0, idx]
+        j = s_id[1, idx]
+        # get neighbour list
+        nbrs, k = neighbour_indices(i, j, nx, ny)
+        # go through the nbr list and add to sink if necessary
+        for m in range(k):
+            ii = nbrs[0, m]
+            jj = nbrs[1, m]
+            if va[ii, jj] == 0:   # i.e. pixel is not yet in sink
+                if arr[ii, jj] == x:
+                    s_id[0, num] = ii
+                    s_id[1, num] = jj
+                    num += 1
+                    va[ii, jj] = 1
+                    nv += 1
+        idx += 1
+        if idx == num:
+            trapped = True
+    s_id = s_id[:, :num]
+    return s_id, va, nv
 
 def sinks_in_catchment(np.ndarray[INT_t, ndim=2] ca not None,
                        np.ndarray[INT_t, ndim=2] ca_idx not None,
@@ -412,54 +360,6 @@ def plateau_int(np.ndarray[INT_t, ndim=2] arr not None,
             trapped = True
     s_id = s_id[:, :num]
     return sa, s_id, nv
-
-def plateau(np.ndarray[FLOAT_t, ndim=2] arr not None, 
-            np.ndarray[INT_t, ndim=2] ca not None,
-            np.ndarray[INT_t, ndim=2] va not None,
-            np.ndarray[INT_t, ndim=2] ca_idx not None,
-            int i, int j, int nx, int ny, float m, 
-            list sink,
-            ):
-    """
-    Returns the plateau region in given array starting at position i, j.
-    """
-    cdef list i_range, j_range
-    cdef list nbrs
-    cdef tuple pos
-    cdef Py_ssize_t idx, u, v, k
-    cdef int nc = 0
-    trapped = False
-    while not trapped:
-        k = 0
-        nbrs = [0] * 9
-        i_range, j_range = neighbour_indices(i, j, nx, ny)
-        for u in i_range:
-            for v in j_range:
-                nbrs[k] = (u, v)
-                k += 1
-        nbrs = nbrs[:k]
-        idx = 0
-        shift_pos = False
-        while not shift_pos:
-            if idx < k:
-                pos = nbrs[idx]
-                if va[pos] == 0:    # i.e., this pixel is not visited yet
-                    if arr[pos] == m:
-                        sink.append(pos)
-                        i = pos[0]
-                        j = pos[1]
-                        shift_pos = True
-                    else:
-                        ca[pos] = 1
-                        ca_idx[0, nc] = pos[0]
-                        ca_idx[1, nc] = pos[1]
-                        nc += 1
-                    va[pos] = 1
-                idx += 1
-            else:
-                shift_pos = True
-                trapped = True
-    return sink, ca, va, ca_idx, nc
 
 def catchment(np.ndarray[FLOAT_t, ndim=2] arr not None,
               np.ndarray[INT_t, ndim=2] va not None,
@@ -783,7 +683,7 @@ def neighbour_indices(int i, int j, int nx, int ny):
     cdef Py_ssize_t k = 0
     for ii in i_range:
         for jj in j_range:
-            if not ii == i and jj == j:
+            if not (ii == i and jj == j):
                 nbrs[0, k] = ii
                 nbrs[1, k] = jj
                 k += 1
@@ -798,3 +698,12 @@ def neighbour_indices(int i, int j, int nx, int ny):
 #     pl.colorbar()
 #     pl.imshow(si, cmap="gray_r", alpha=0.4)
 #     pl.show()
+#     import sys
+#     print "starting 'trapping' region estimation..."
+#     sys.stdout.flush()
+#     cdef float pc = 0
+#     for k in range(ns):
+#         pc = float(k * 100) / float(ns)
+#         print "\b\b\b\b\b\b\b\b%.1f %%"%pc,
+#         sys.stdout.flush()
+#     print "\ndone!"
