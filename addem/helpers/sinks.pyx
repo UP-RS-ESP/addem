@@ -2,7 +2,7 @@
 SINKS.PYX
 
 Created: Wed Mar 16, 2016  02:41PM
-Last modified: Fri Apr 01, 2016  06:38PM
+Last modified: Mon Apr 11, 2016  04:44PM
 
 """
 
@@ -88,14 +88,15 @@ def find_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
     cdef int nx = arr.shape[0]
     cdef int ny = arr.shape[1]
     cdef int max_sa = (nx * ny)
-    cdef int n_data_pixels = 0
-    cdef int ns = 0
+    cdef int ndp = 0                        # no. of data pixels
+    cdef int ns = 0                         # no. of sink pixels
     cdef Py_ssize_t i, j
     cdef Py_ssize_t k = 0
     cdef float x, m
     cdef float nn, ss, ee, ww, ne, nw, se, sw
     cdef int way_down = 0
     cdef np.ndarray[FLOAT_t, ndim=1] nbrs = np.zeros([8], dtype=FLOAT)
+    cdef np.ndarray[FLOAT_t, ndim=2] mi = np.zeros([nx, ny], dtype=FLOAT)
     cdef np.ndarray[INT_t, ndim=2] si = np.zeros([nx, ny], dtype=INT)
     cdef np.ndarray[INT_t, ndim=2] si_id = np.zeros([2, max_sa], dtype=INT)
     for i in range(1, nx - 1):
@@ -104,8 +105,9 @@ def find_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
             # 1. Check if pixel is missing data
             ####
             x = arr[i, j]
+            mi[i, j] = missing_value
             if x is not missing_value:
-                n_data_pixels += 1
+                ndp += 1
                 ####
                 # 2. Check if pixel is at border of landscape
                 ####
@@ -125,6 +127,7 @@ def find_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
                         ne, nw,
                         se, sw
                         )
+                mi[i, j] = m
                 # 2.c. m equals missing value => pixel is at border
                 if m is not missing_value:
                     ####
@@ -154,41 +157,121 @@ def find_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
                         si_id[1, ns] = j
                         ns += 1
     print "%d possible sink pixels found..."%ns
-    print "\t...out of a total of %d pixels in data array"%n_data_pixels
+    print "\t...out of a total of %d pixels in data array"%ndp
     ####################################################
     ####################################################
     #### B. SECOND SWEEP
-    ####    1. Walk through potential sink pixels from A
-    ####    2. Identify flat "trapping" regions 
-    ####    3. Discard:
-    ####        3.a. "hill tops" which have a way down
-    ####        3.b. "edge sinks" which exit at borders
+    ####    1. Identify flat "trapping regions" in sinks
+    ####    2. Check if:
+    ####        2.a. "edge sinks" which exit at borders
+    ####        2.b. "hill tops" which have a way down
+    ####    3. Store the trapping region only if:
+    ####        3.a. it's not at the border
+    ####        3.b. there's no way down
     ####################################################
     ####################################################
-    cdef nv = 0
-    cdef np.ndarray[INT_t, ndim=2] sink = np.zeros([nx, ny], dtype=INT)
+    print "getting trapping regions..."
+    cdef int nv = 0
+    cdef int ntr = 0
+    cdef int np_tr_old = 0
+    cdef int np_tr_new = 0
+    cdef Py_ssize_t ii, jj, kk
+    cdef np.ndarray[INT_t, ndim=2] tr = np.zeros([2, ndp], dtype=INT)
+    cdef np.ndarray[INT_t, ndim=1] np_tr = np.zeros([ns], dtype=INT)
+    cdef np.ndarray[INT_t, ndim=2] sa = np.zeros([2, ns], dtype=INT)
     cdef np.ndarray[INT_t, ndim=2] va = np.zeros([nx, ny], dtype=INT)
-    cdef np.ndarray[INT_t, ndim=2] sa = np.zeros([nx, ny], dtype=INT)
-    cdef np.ndarray[INT_t, ndim=2] s = np.zeros([2, ns], dtype=INT)
+    cdef np.ndarray[FLOAT_t, ndim=2] tmp
+    cdef int ll = 5 
+    si = np.zeros([nx, ny], dtype=INT)
+    cdef int mr, Mr, mc, Mc
     for k in range(ns):
         i = si_id[0, k]
         j = si_id[1, k]
+        ####
+        # 1. Identify "trapping regions" in sink pixels from above
+        ####
         if va[i, j] == 0:
-            s, va, nv = plateau_float(arr, va, 
-                                      i, j, nx, ny, nv, n_data_pixels)
-            sink[s[0], s[1]] = 1
-    # TODO: 
-    #   1. Store the above identified sinks efficiently in a ndarray
-    #       a. This array can have a max row length
-    #       b. Another array can store the no. of elements in each row,
-    #          beyond which all remaining tail-end elements are zero.
-    #   2. Go through the above identified 'sinks' and discard the 
-    #       spurious sinks which are either hill tops, slopes, or edges
+            sa, np_tr_new, va, nv = plateau_float(arr, va, 
+                                       i, j, nx, ny, nv, ndp)
+            si[sa[0], sa[1]] = 1
+            ####
+            # 2.a. Check if trapping region is at border
+            ####
+            is_at_border = 0
+            kk = 0
+            while kk < np_tr_new and is_at_border == 0:
+                ii = sa[0, kk]
+                jj = sa[1, kk]
+                m = mi[ii, jj]
+                if m is missing_value:
+                    is_at_border = 1
+                else:
+                    kk += 1
+            if is_at_border == 0:
+                ####
+                # 2.b. Check if trapping region has a way down
+                ####
+                way_down = 0
+                kk = 0
+                while kk < np_tr_new and way_down == 0:
+                    ii = sa[0, kk]
+                    jj = sa[1, kk]
+                    m = mi[ii, jj]
+                    if m < arr[ii, jj]:
+                        way_down = 1
+                    else:
+                        kk += 1
+                if way_down == 0:
+                    ####
+                    # 3. Accept only if not at border and no way down
+                    ####
+                    si[sa[0], sa[1]] = 1
+                    if ntr == 1000:
+                        print "review test case!"
+                        print sa
+                        mr = min(sa[0])
+                        Mr = max(sa[0])
+                        mc = min(sa[1])
+                        Mc = max(sa[1])
+                        import matplotlib.pyplot as pl
+                        tmp = arr[mr-ll:Mr+ll, mc-ll:Mc+ll]
+                        tmp[tmp==missing_value] = np.nan
+                        pl.imshow(tmp,
+                                  interpolation="none",
+                                  extent=(mc-ll, Mc+ll, mr-ll, Mr+ll)
+                                  )
+                        
+                        pl.colorbar()
+                        pl.imshow(si[mr-ll:Mr+ll, mc-ll:Mc+ll], 
+                                  cmap="gray_r",
+                                  alpha=0.25,
+                                  interpolation="none",
+                                  extent=(mc-ll, Mc+ll, mr-ll, Mr+ll)
+                                  )
+                        pl.show()
+                        import sys
+                        sys.exit()
+                    tr[0, np_tr_old:np_tr_old + np_tr_new] = sa[0]
+                    tr[1, np_tr_old:np_tr_old + np_tr_new] = sa[1]
+                    np_tr[ntr] = np_tr_new
+                    np_tr_old += np_tr_new
+                    ntr += 1
+    tr = tr[:, :ntr]
+    np_tr = np_tr[:ntr]
+    print "done."
+    import matplotlib.pyplot as pl
+    arr[arr==missing_value] = np.nan
+    pl.imshow(arr, cmap="jet")
+    pl.colorbar()
+    pl.imshow(si, cmap="gray_r", alpha=0.4)
+    pl.show()
+    import sys
+    sys.exit()
     return None
 
 def plateau_float(np.ndarray[FLOAT_t, ndim=2] arr not None, 
                   np.ndarray[INT_t, ndim=2] va not None,
-                  int i, int j, int nx, int ny, int nv, int n_data_pixels,
+                  int i, int j, int nx, int ny, int nv, int ndp,
                   ):
     """
     Returns the plateau region in given array starting at position i, j.
@@ -197,12 +280,13 @@ def plateau_float(np.ndarray[FLOAT_t, ndim=2] arr not None,
     cdef float x
     x = arr[i, j]
     cdef Py_ssize_t ii, jj, k, m
-    cdef max_sa = n_data_pixels - nv
+    cdef max_sa = ndp - nv
     cdef np.ndarray[INT_t, ndim=2] s_id = np.zeros([2, max_sa], dtype=INT)
     cdef num = 1
     cdef Py_ssize_t idx = 0
     s_id[0, idx] = i
     s_id[1, idx] = j
+    va[i, j] = 1
     trapped = False
     while not trapped:
         i = s_id[0, idx]
@@ -224,7 +308,7 @@ def plateau_float(np.ndarray[FLOAT_t, ndim=2] arr not None,
         if idx == num:
             trapped = True
     s_id = s_id[:, :num]
-    return s_id, va, nv
+    return s_id, num, va, nv
 
 def sinks_in_catchment(np.ndarray[INT_t, ndim=2] ca not None,
                        np.ndarray[INT_t, ndim=2] ca_idx not None,
