@@ -2,7 +2,7 @@
 SINKS.PYX
 
 Created: Wed Mar 16, 2016  02:41PM
-Last modified: Tue Apr 12, 2016  04:42PM
+Last modified: Wed Apr 13, 2016  04:07PM
 
 """
 
@@ -232,7 +232,8 @@ def find_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
     np_tr = np_tr[:ntr]
     print "done."
     print "estimate fill value routine..."
-    fv = fill_value_multi_pixel(arr, si, tr, np_tr, ntr, nx, ny)
+    fv = fill_value_multi_pixel(arr, si, tr, np_tr, ntr, nx, ny,
+                                missing_value)
     ################
     ################ Temporary plotting for visualizing the sinks
 #     import matplotlib.pyplot as pl
@@ -305,7 +306,8 @@ def fill_value_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
                            np.ndarray[INT_t, ndim=2] si not None,
                            np.ndarray[INT_t, ndim=2] si_id not None,
                            np.ndarray[INT_t, ndim=1] si_np not None,
-                           int ns, int nx, int ny
+                           int ns, int nx, int ny,
+                           float missing_value,
                            ):
     """
     Returns fill value for pre-identified multi-pixel depressions.
@@ -334,60 +336,83 @@ def fill_value_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
     cdef np.ndarray[INT_t, ndim=2] ca_idx
     cdef int nc
     start = 0
+    ####
+    #### Temp. plotting commands
+    cdef int mr, Mr, mc, Mc
+    cdef np.ndarray[INT_t, ndim=2] tmp_ca
+    cdef np.ndarray[INT_t, ndim=2] tmp_si
+    cdef np.ndarray[FLOAT_t, ndim=2] tmp_ar
+    import matplotlib.pyplot as pl
+    ####
+    ####
     for k in range(ns):
-        stop = si_np[k]
+        stop = start + si_np[k]
         si_curr_id = si_id[:, start:stop]
-        start = stop
-        i = si_id[0, 0]
-        j = si_id[1, 0]
-        print "that"
-        ca, ca_idx, nc = catchment(arr, i, j, nx, ny, nv)
+        i = si_curr_id[0, 0]
+        j = si_curr_id[1, 0]
+        print "catchment initial condition = ", i, j
+        ca, ca_idx, nc = catchment(arr, i, j, nx, ny, nv, missing_value)
         print nc
         nv =+ nc
+        print "(i, j) = (%d, %d)"%(i, j)
+        print "(start, stop, si_np) = (%d, %d, %d)"%(start, stop, si_np[k])
+        mr = min(ca_idx[0])
+        Mr = max(ca_idx[0])
+        mc = min(ca_idx[1])
+        Mc = max(ca_idx[1])
+        tmp_ca = ca[:10, 4130:4150]
+        tmp_si = si[:10, 4130:4150]
+        tmp_ar = arr[:10, 4130:4150]
+#         tmp_ca = ca[mr:Mr, mc:Mc]
+#         tmp_ar = arr[mr:Mr, mc:Mc]
+        tmp_ar[tmp_ar == -9999] = np.nan
+        pl.imshow(tmp_ar,
+                  cmap="jet",
+                  interpolation="none",
+                  #extent=(mc, Mc, mr, Mr)
+                  extent=(4130, 4150, 10, 0)
+                  )
+        pl.colorbar()
+        pl.imshow(tmp_ca,
+                  cmap="gray_r",
+                  interpolation="none",
+                  alpha=0.25,
+#                   extent=(mc, Mc, mr, Mr)
+                  extent=(4130, 4150, 10, 0)
+                  )
+        pl.plot(si_curr_id[1] + 0.5, si_curr_id[0] + 0.5, "ks")
+#         pl.imshow(tmp_si,
+#                   cmap="gray_r",
+#                   interpolation="none",
+#                   alpha=0.25,
+# #                   extent=(mc, Mc, mr, Mr)
+#                   extent=(4130, 4150, 10, 0)
+#                   )
+        pl.title("Catchment for sink at (%d, %d)"%(i, j))
+        pl.show()
+        if k == 1:
+            import sys
+            sys.exit()
+        start = stop
     import sys
     sys.exit()
     return None
 
 def catchment(np.ndarray[FLOAT_t, ndim=2] arr not None,
-              #np.ndarray[INT_t, ndim=2] va not None,
               int i, int j, int nx, int ny, int nv,
-              #float m, float fill_val
+              float missing_value,
               ):
     """
     Returns the catchment area for the given sink in the given array.
     """
-    ########################################################################
-    ########################################################################
-    ############
-    ## Set nbrs of (i, j) as initial condition (IC) for catchment
-    ############
     cdef Py_ssize_t k
     cdef np.ndarray[INT_t, ndim=2] nbrs = np.zeros([2, 8], dtype=INT)
     cdef Py_ssize_t ii, jj, kk
     cdef int max_ca = (nx * ny) - nv
     cdef np.ndarray[INT_t, ndim=2] ca_idx = np.zeros([2, max_ca], dtype=INT)
-    ############
-    #### 1. Find nbrs
-    ############
-    nbrs, k = neighbour_indices(i, j, nx, ny)
-    ############
-    #### 2. Go through nbrs and note down those nbrs > minimum
-    ############
-    cdef float x = arr[i, j]
-    for kk in range(k):
-        ii = nbrs[0, kk]
-        jj = nbrs[1, kk]
-        if arr[ii, jj] > x:
-            ca_idx[0, kk] = ii
-            ca_idx[1, kk] = jj
-    ############
-    ########################################################################
-    ########################################################################
-    ############
-    ## Using above (i, j) as IC, walk through DEM and identify catchment
-    ############
+    cdef float x
     cdef np.ndarray[INT_t, ndim=2] ca = np.zeros([nx, ny], dtype=INT)
-    cdef nc = 1
+    cdef ca_np = 1
     cdef Py_ssize_t idx = 0
     ca_idx[0, idx] = i
     ca_idx[1, idx] = j
@@ -402,18 +427,18 @@ def catchment(np.ndarray[FLOAT_t, ndim=2] arr not None,
         for kk in range(k):
             ii = nbrs[0, kk]
             jj = nbrs[1, kk]
-            if ca[ii, jj] == 0:# and va[pos] == 0:   # pixel not yet in catchment
-                if arr[ii, jj] >= x:
-                    ca[ii, jj] = 1
-                    ca_idx[0, nc] = ii
-                    ca_idx[1, nc] = jj
-                    nc += 1
-#                     va[pos] = 1
+            if arr[ii, jj] is not missing_value:
+                if ca[ii, jj] == 0:# and va[pos] == 0:   # pixel not yet in catchment
+                    if arr[ii, jj] >= x:
+                        ca[ii, jj] = 1
+                        ca_idx[0, ca_np] = ii
+                        ca_idx[1, ca_np] = jj
+                        ca_np += 1
         idx += 1
-        if idx == nc:
+        if idx == ca_np:
             trapped = True
-    ca_idx = ca_idx[:, :nc]
-    return ca, ca_idx, nc
+    ca_idx = ca_idx[:, :ca_np]
+    return ca, ca_idx, ca_np
 
 def fill_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
                      list sinks,
