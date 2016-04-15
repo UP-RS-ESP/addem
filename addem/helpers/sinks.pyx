@@ -2,12 +2,13 @@
 SINKS.PYX
 
 Created: Wed Mar 16, 2016  02:41PM
-Last modified: Wed Apr 13, 2016  04:07PM
+Last modified: Fri Apr 15, 2016  06:43PM
 
 """
 
 import numpy as np
 cimport numpy as np
+cimport cython
 
 INT = np.int
 ctypedef np.int_t INT_t
@@ -19,61 +20,281 @@ def hello():
     print "Hello! I am the 'addem.helpers.sinks' module!"
     return None
 
-def find_single_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
-                      float missing_value):
+@cython.boundscheck(False) # turn off bounds-checking for this function
+def fill(np.ndarray[FLOAT_t, ndim=2] arr not None,
+         float missing_value, int verbose=1):
     """
-    Finds single-pixel depressions in given DEM array.
+    Finds and fills depressions in given DEM array.
     """
+    print "running sinks.fill..."
+    cdef np.ndarray[FLOAT_t, ndim=2] arr_out = arr
     cdef int nx = arr.shape[0]
     cdef int ny = arr.shape[1]
-    cdef int max_ns = (nx * ny) // 9
-    cdef int ns = 0
     cdef Py_ssize_t i, j, k
-    cdef float m
-    cdef np.ndarray[INT_t, ndim=1] row = np.zeros([max_ns], dtype=INT)
-    cdef np.ndarray[INT_t, ndim=1] col = np.zeros([max_ns], dtype=INT)
-    cdef np.ndarray[FLOAT_t, ndim=1] fval = np.zeros([max_ns], dtype=FLOAT)
-    k = 0
-    for i in range(1, nx - 1):
-        for j in range(1, ny - 1):
+    cdef float x, m
+    ####
+    ####
+    # get data pixels
+    cdef int max_ndp = nx * ny
+    cdef np.ndarray[INT_t, ndim=2] dp_ind = np.ndarray([2, max_ndp], dtype=INT)
+    cdef int dp_num
+    dp_ind, dp_num = get_data_pixels(arr_out[1:nx-1, 1:ny-1],
+                                     nx-2, ny-2, missing_value)
+    dp_ind = dp_ind + 1
+    ####
+    ####
+    # fill single pixel sinks...
+    print "fill single-pixel sinks.."
+    cdef np.ndarray[INT_t, ndim=1] row = dp_ind[0]
+    cdef np.ndarray[INT_t, ndim=1] col = dp_ind[1]
+    cdef float nn, ss, ee, ww, ne, nw, se, sw
+    for k in range(dp_num):
+        i = <Py_ssize_t>row[k]
+        j = <Py_ssize_t>col[k]
+        x = arr_out[i, j]
+        m = min(
+                arr_out[i - 1, j],
+                arr_out[i + 1, j],
+                arr_out[i, j - 1],
+                arr_out[i, j + 1],
+                arr_out[i - 1, j - 1],
+                arr_out[i - 1, j + 1],
+                arr_out[i + 1, j - 1],
+                arr_out[i + 1, j + 1],
+               )
+        if m != missing_value:
+            if x < m:
+                arr_out[i, j] = m
+    print "done."
+    ####
+    ####
+    # fill multi-pixel sinks iteratively
+    cdef np.ndarray[INT_t, ndim=2] visited = np.ndarray([nx, ny], dtype=INT)
+    cdef np.ndarray[INT_t, ndim=2] ind
+    cdef bint is_sink
+    print "fill multi-pixel sinks..."
+    for k in range(dp_num):
+        i = <Py_ssize_t>row[k]
+        j = <Py_ssize_t>col[k]
+        x = arr_out[i, j]
+        m = min(
+                arr_out[i - 1, j],
+                arr_out[i + 1, j],
+                arr_out[i, j - 1],
+                arr_out[i, j + 1],
+                arr_out[i - 1, j - 1],
+                arr_out[i - 1, j + 1],
+                arr_out[i + 1, j - 1],
+                arr_out[i + 1, j + 1],
+                )
+        if m != missing_value:
+            if visited[i, j] == 0:
+                if x == m:
+                    is_sink = floodplain(arr_out,
+                                         i, j,
+                                         nx, ny,
+                                         dp_num,
+                                         missing_value)
+                    if is_sink:
+                        arr_out, visited = floodfill(arr_out,
+                                                     visited,
+                                                     i, j,
+                                                     nx, ny,
+                                                     dp_num)
+    print "done."
+    return arr_out
+
+def get_data_pixels(np.ndarray[FLOAT_t, ndim=2] arr not None, 
+                    int nx, int ny, float missing_value):
+    """
+    Returns indices of data pixels in DEM array.
+    """
+    cdef Py_ssize_t i, j
+    cdef int max_ndp = nx * ny
+    cdef np.ndarray[INT_t, ndim=2] dp_ind = np.zeros([2, max_ndp], dtype=INT)
+    cdef int dp_num = 0
+    for i in range(nx):
+        for j in range(ny):
             if arr[i, j] is not missing_value:
-                m = min(# minimum of neighbours
-                        arr[i-1, j], arr[i+1, j],       # north & south
-                        arr[i, j-1], arr[i, j+1],       # east & west
-                        arr[i-1, j-1], arr[i-1, j+1],   # nw & ne
-                        arr[i+1, j-1], arr[i+1, j+1]    # sw & se
-                        )
-                if m is not missing_value: # i.e. (i, j) not at border
-                    # sinks_1px := array entries less than min. of nbrs
-                    if arr[i, j] < m:
-                        row[k] = i
-                        col[k] = j
-                        fval[k] = m
-                        k += 1
-                        ns += 1
-    row = row[:k]
-    col = col[:k]
-    fval = fval[:k]
-    return ns, row, col, fval
+                dp_ind[0, dp_num] = i
+                dp_ind[1, dp_num] = j
+                dp_num += 1
+    dp_ind = dp_ind[:, :dp_num]
+    return dp_ind, dp_num
 
-def fill_single_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
-                      int ns,
-                      np.ndarray[INT_t, ndim=1] row not None,
-                      np.ndarray[INT_t, ndim=1] col not None,
-                      np.ndarray[FLOAT_t, ndim=1] fval not None,
-                      ):
+@cython.boundscheck(False) # turn off bounds-checking for this function
+cdef bint floodplain(np.ndarray[FLOAT_t, ndim=2] arr, 
+                   Py_ssize_t i, Py_ssize_t j, 
+                   int nx, int ny, int dp_num, 
+                   float missing_value):
     """
-    Fills single-pixel depressions in given DEM array.
+    Returns flatland at (i, j); min. of bordering pixels; and if way down.
     """
+    cdef float y
+    cdef float x
+    cdef int num = 1
+    cdef int nbr_i_min = 0
+    cdef int nbr_i_max = 0
+    cdef int nbr_j_min = 0
+    cdef int nbr_j_max = 0
+    cdef int max_nbrs = 8
+    cdef bint way_down = 0
+    cdef bint at_border = 0
+    cdef bint trapped = 0
+    cdef Py_ssize_t ii, jj, kk
     cdef Py_ssize_t k
-    cdef float m
-    cdef np.ndarray[FLOAT_t, ndim=1] nbrs = np.zeros([8], dtype=FLOAT)
-    for k in range(ns):
-        arr[row[k], col[k]] = fval[k]
-    return arr
+    cdef Py_ssize_t idx = 0
+    cdef np.ndarray[INT_t, ndim=2] va = np.ndarray([nx, ny], dtype=INT)
+    cdef np.ndarray[INT_t, ndim=2] ind = np.ndarray([2, dp_num], dtype=INT)
+    cdef np.ndarray[INT_t, ndim=2] nbr = np.ndarray([2, max_nbrs], dtype=INT)
+    ####
+    ind[0, idx] = i
+    ind[1, idx] = j
+    x = arr[i, j]
+    va[i, j] = 1
+    while not trapped:
+        i = <Py_ssize_t>ind[0, idx]
+        j = <Py_ssize_t>ind[1, idx]
+        ###
+        # get neighbour list
+        nbr_i_min = i - 1
+        nbr_i_max = i + 2
+        if i == 0:
+            nbr_i_min = 0
+        elif i == nx - 1:
+            nbr_i_max = nx
+        nbr_j_min = j - 1
+        nbr_j_max = j + 2
+        if j == 0:
+            nbr_j_min = 0
+        elif j == ny - 1:
+            nbr_j_max = ny
+        ###
+        ### Now, go through the range of i, j values and create a nbr list.
+        k = 0
+        for ii in range(nbr_i_min, nbr_i_max):
+            for jj in range(nbr_j_min, nbr_j_max):
+                if not (ii == i and jj == j):
+                    nbr[0, k] = ii
+                    nbr[1, k] = jj
+                    k += 1
+        # go through the nbr list and add to flatland if necessary
+        for kk in range(k):
+            ii = <Py_ssize_t>nbr[0, kk]
+            jj = <Py_ssize_t>nbr[1, kk]
+            y = arr[ii, jj]
+            if va[ii, jj] == 0:   # i.e. pixel is not yet visited
+                if y == x:
+                    ind[0, num] = ii
+                    ind[1, num] = jj
+                    num += 1
+                    va[ii, jj] = 1
+                elif y < x:
+                    way_down = 1
+                if y == missing_value:
+                    at_border = 1
+        idx += 1
+        if idx == num:
+            trapped = 1
+    # decide if floodplain is sink or not
+    cdef bint is_sink = 0
+    if not at_border:
+        if not way_down:
+            is_sink = 1
+    return is_sink
 
-def find_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
-                     float missing_value):
+@cython.boundscheck(False) # turn off bounds-checking for this function
+def floodfill(np.ndarray[FLOAT_t, ndim=2] arr not None, 
+              np.ndarray[INT_t, ndim=2] visited not None,
+              Py_ssize_t i, Py_ssize_t j, int nx, int ny, int dp_num):
+    """
+    blabla
+    """
+    cdef float y
+    cdef float x
+    cdef float m
+    cdef int num = 1
+    cdef int max_nbrs = 8
+    cdef int nbr_i_min = 0
+    cdef int nbr_i_max = 0
+    cdef int nbr_j_min = 0
+    cdef int nbr_j_max = 0
+    cdef Py_ssize_t ii, jj, kk
+    cdef Py_ssize_t k
+    cdef Py_ssize_t idx = 0
+    cdef np.ndarray[INT_t, ndim=2] va = np.zeros([nx, ny], dtype=INT)
+    cdef np.ndarray[INT_t, ndim=2] ind = np.ndarray([2, dp_num], dtype=INT)
+    cdef np.ndarray[INT_t, ndim=2] nbrs = np.ndarray([2, max_nbrs], dtype=INT)
+    cdef bint way_down = 0
+    cdef bint trapped = 0
+    ####
+    ####
+    ind[0, idx] = i
+    ind[1, idx] = j
+    va[i, j] = 1
+    while not way_down:
+        trapped = 0
+        m = 100000
+        x = arr[i, j]
+        idx = <Py_ssize_t>0
+        while not trapped:
+            i = <Py_ssize_t>ind[0, idx]
+            j = <Py_ssize_t>ind[1, idx]
+            ###
+            # get neighbour list
+            nbr_i_min = i - 1
+            nbr_i_max = i + 2
+            if i == 0:
+                nbr_i_min = 0
+            elif i == nx - 1:
+                nbr_i_max = nx
+            nbr_j_min = j - 1
+            nbr_j_max = j + 2
+            if j == 0:
+                nbr_j_min = 0
+            elif j == ny - 1:
+                nbr_j_max = ny
+            ###
+            ### Now, go through the range of i, j values and create a nbr list.
+            k = 0
+            for ii in range(nbr_i_min, nbr_i_max):
+                for jj in range(nbr_j_min, nbr_j_max):
+                    if not (ii == i and jj == j):
+                        nbrs[0, k] = ii
+                        nbrs[1, k] = jj
+                        k += 1
+            # go through the nbr list and add to flatland if necessary
+            for kk in range(k):
+                ii = <Py_ssize_t>nbrs[0, kk]
+                jj = <Py_ssize_t>nbrs[1, kk]
+                y = arr[ii, jj]
+                if va[ii, jj] == 0:   # i.e. pixel is not yet visited
+                    if y == x:
+                        ind[0, num] = ii
+                        ind[1, num] = jj
+                        num += 1
+                        va[ii, jj] = 1
+                    elif y < x:
+                        way_down = 1
+                    elif y > x:
+                        if y < m:
+                            m = y
+            idx += 1
+            if idx == num:
+                trapped = 1
+        if not way_down:
+            for k in range(num):
+                ii = <Py_ssize_t>ind[0, k]
+                jj = <Py_ssize_t>ind[1, k]
+                arr[ii, jj] = <float>m
+    for k in range(num):
+        ii = <Py_ssize_t>ind[0, k]
+        jj = <Py_ssize_t>ind[1, k]
+        visited[ii, jj] = 1
+    return arr, visited
+
+@cython.boundscheck(False) # turn off bounds-checking for this function
+def find(np.ndarray[FLOAT_t, ndim=2] arr not None, float missing_value):
     """
     Finds multi-pixel depressions in given DEM array.
     """
@@ -188,8 +409,8 @@ def find_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
         # 1. Identify "trapping regions" in sink pixels from above
         ####
         if va[i, j] == 0:
-            sa, np_tr_new, va, nv = plateau_float(arr, va, 
-                                       i, j, nx, ny, nv, ndp)
+            sa, np_tr_new, va, nv = trapping_region(arr, va, 
+                                                    i, j, nx, ny, nv, ndp)
             si[sa[0], sa[1]] = 1
             ####
             # 2.a. Check if trapping region is at border
@@ -230,52 +451,31 @@ def find_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
                     ntr += 1
     tr = tr[:, :ntr]
     np_tr = np_tr[:ntr]
-    print "done."
-    print "estimate fill value routine..."
-    fv = fill_value_multi_pixel(arr, si, tr, np_tr, ntr, nx, ny,
-                                missing_value)
-    ################
-    ################ Temporary plotting for visualizing the sinks
-#     import matplotlib.pyplot as pl
-#     arr[arr==missing_value] = np.nan
-#     pl.imshow(arr, cmap="jet")
-#     pl.colorbar()
-#     pl.imshow(si, cmap="gray_r", alpha=0.4)
-#     pl.show()
-#     import sys
-#     sys.exit()
-    ################
-    ################
-    # TODO: 
-    #   1. Use fill_multi_pixel to estimate fill values and fill sink
-    #       1.a. Go through sink indices
-    #       1.b. Estimate catchment for sink
-    #       1.c. Get the border of catchment and find the outlet
-    #       1.d. estimate the fill value for all sinks in catchment
-    #       1.c. Get all the sinks that fall in that catchment from the
-    #       results of find_multi_pixel which are now passed to
-    #       fill_multi_pixel
-    #       1.d. Fill all sinks in the catchment with estimated fill value
-    #       1.e. Mark all sinks in that catchment as filled
-    ################
-    ################
-    return None
+    return tr, np_tr, ntr
 
-def plateau_float(np.ndarray[FLOAT_t, ndim=2] arr not None, 
-                  np.ndarray[INT_t, ndim=2] va not None,
-                  int i, int j, int nx, int ny, int nv, int ndp,
-                  ):
+@cython.boundscheck(False) # turn off bounds-checking for this function
+def trapping_region(np.ndarray[FLOAT_t, ndim=2] arr not None, 
+                    np.ndarray[INT_t, ndim=2] va not None,
+                    int i, int j, int nx, int ny, int nv, int ndp,
+                    ):
     """
     Returns the plateau region in given array starting at position i, j.
     """
-    cdef np.ndarray[INT_t, ndim=2] nbrs
     cdef float x
     x = arr[i, j]
     cdef Py_ssize_t ii, jj, k, m
     cdef max_sa = ndp - nv
-    cdef np.ndarray[INT_t, ndim=2] s_id = np.zeros([2, max_sa], dtype=INT)
+    cdef np.ndarray[INT_t, ndim=2] s_id = np.ndarray([2, max_sa], dtype=INT)
     cdef num = 1
     cdef Py_ssize_t idx = 0
+    #### for neighbour indices
+    cdef int nbr_i_min = 0
+    cdef int nbr_i_max = 0
+    cdef int nbr_j_min = 0
+    cdef int nbr_j_max = 0
+    cdef int max_nbrs = 8
+    cdef np.ndarray[INT_t, ndim=2] nbrs = np.ndarray([2, max_nbrs], dtype=INT)
+    ####
     s_id[0, idx] = i
     s_id[1, idx] = j
     va[i, j] = 1
@@ -284,7 +484,27 @@ def plateau_float(np.ndarray[FLOAT_t, ndim=2] arr not None,
         i = s_id[0, idx]
         j = s_id[1, idx]
         # get neighbour list
-        nbrs, k = neighbour_indices(i, j, nx, ny)
+        nbr_i_min = i - 1
+        nbr_i_max = i + 2
+        if i == 0:
+            nbr_i_min = 0
+        elif i == nx - 1:
+            nbr_i_max = nx
+        nbr_j_min = j - 1
+        nbr_j_max = j + 2
+        if j == 0:
+            nbr_j_min = 0
+        elif j == ny - 1:
+            nbr_j_max = ny
+        ###
+        ### Now, go through the range of i, j values and create a nbr list.
+        k = 0
+        for ii in range(nbr_i_min, nbr_i_max):
+            for jj in range(nbr_j_min, nbr_j_max):
+                if not (ii == i and jj == j):
+                    nbrs[0, k] = ii
+                    nbrs[1, k] = jj
+                    k += 1
         # go through the nbr list and add to sink if necessary
         for m in range(k):
             ii = nbrs[0, m]
@@ -301,464 +521,4 @@ def plateau_float(np.ndarray[FLOAT_t, ndim=2] arr not None,
             trapped = True
     s_id = s_id[:, :num]
     return s_id, num, va, nv
-
-def fill_value_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
-                           np.ndarray[INT_t, ndim=2] si not None,
-                           np.ndarray[INT_t, ndim=2] si_id not None,
-                           np.ndarray[INT_t, ndim=1] si_np not None,
-                           int ns, int nx, int ny,
-                           float missing_value,
-                           ):
-    """
-    Returns fill value for pre-identified multi-pixel depressions.
-    """
-    ################
-    ################
-    #   1. Go through sink indices
-    #   2. Estimate catchment for sink
-    #   3. Get the border of catchment and find the outlet
-    #   4. Estimate the fill value for all sinks in catchment
-    #   5. Get all the sinks that fall in that catchment from the
-    #      results of find_multi_pixel which are now passed to
-    #      fill_multi_pixel
-    #   6. Fill all sinks in the catchment with estimated fill value
-    #   7. Mark all sinks in that catchment as filled
-    ################
-    ################
-    print "this"
-    print "%d sinks to fill!"%ns
-    cdef Py_ssize_t k
-    cdef np.ndarray[INT_t, ndim=2] si_curr_id
-    cdef Py_ssize_t start, stop
-    cdef Py_ssize_t i, j
-    cdef int nv = ns
-    cdef np.ndarray[INT_t, ndim=2] ca
-    cdef np.ndarray[INT_t, ndim=2] ca_idx
-    cdef int nc
-    start = 0
-    ####
-    #### Temp. plotting commands
-    cdef int mr, Mr, mc, Mc
-    cdef np.ndarray[INT_t, ndim=2] tmp_ca
-    cdef np.ndarray[INT_t, ndim=2] tmp_si
-    cdef np.ndarray[FLOAT_t, ndim=2] tmp_ar
-    import matplotlib.pyplot as pl
-    ####
-    ####
-    for k in range(ns):
-        stop = start + si_np[k]
-        si_curr_id = si_id[:, start:stop]
-        i = si_curr_id[0, 0]
-        j = si_curr_id[1, 0]
-        print "catchment initial condition = ", i, j
-        ca, ca_idx, nc = catchment(arr, i, j, nx, ny, nv, missing_value)
-        print nc
-        nv =+ nc
-        print "(i, j) = (%d, %d)"%(i, j)
-        print "(start, stop, si_np) = (%d, %d, %d)"%(start, stop, si_np[k])
-        mr = min(ca_idx[0])
-        Mr = max(ca_idx[0])
-        mc = min(ca_idx[1])
-        Mc = max(ca_idx[1])
-        tmp_ca = ca[:10, 4130:4150]
-        tmp_si = si[:10, 4130:4150]
-        tmp_ar = arr[:10, 4130:4150]
-#         tmp_ca = ca[mr:Mr, mc:Mc]
-#         tmp_ar = arr[mr:Mr, mc:Mc]
-        tmp_ar[tmp_ar == -9999] = np.nan
-        pl.imshow(tmp_ar,
-                  cmap="jet",
-                  interpolation="none",
-                  #extent=(mc, Mc, mr, Mr)
-                  extent=(4130, 4150, 10, 0)
-                  )
-        pl.colorbar()
-        pl.imshow(tmp_ca,
-                  cmap="gray_r",
-                  interpolation="none",
-                  alpha=0.25,
-#                   extent=(mc, Mc, mr, Mr)
-                  extent=(4130, 4150, 10, 0)
-                  )
-        pl.plot(si_curr_id[1] + 0.5, si_curr_id[0] + 0.5, "ks")
-#         pl.imshow(tmp_si,
-#                   cmap="gray_r",
-#                   interpolation="none",
-#                   alpha=0.25,
-# #                   extent=(mc, Mc, mr, Mr)
-#                   extent=(4130, 4150, 10, 0)
-#                   )
-        pl.title("Catchment for sink at (%d, %d)"%(i, j))
-        pl.show()
-        if k == 1:
-            import sys
-            sys.exit()
-        start = stop
-    import sys
-    sys.exit()
-    return None
-
-def catchment(np.ndarray[FLOAT_t, ndim=2] arr not None,
-              int i, int j, int nx, int ny, int nv,
-              float missing_value,
-              ):
-    """
-    Returns the catchment area for the given sink in the given array.
-    """
-    cdef Py_ssize_t k
-    cdef np.ndarray[INT_t, ndim=2] nbrs = np.zeros([2, 8], dtype=INT)
-    cdef Py_ssize_t ii, jj, kk
-    cdef int max_ca = (nx * ny) - nv
-    cdef np.ndarray[INT_t, ndim=2] ca_idx = np.zeros([2, max_ca], dtype=INT)
-    cdef float x
-    cdef np.ndarray[INT_t, ndim=2] ca = np.zeros([nx, ny], dtype=INT)
-    cdef ca_np = 1
-    cdef Py_ssize_t idx = 0
-    ca_idx[0, idx] = i
-    ca_idx[1, idx] = j
-    trapped = False
-    while not trapped:
-        i = ca_idx[0, idx]
-        j = ca_idx[1, idx]
-        x = arr[i, j]
-        # get neighbour list
-        nbrs, k = neighbour_indices(i, j, nx, ny)
-        # go through the nbr list and add to catchment if necessary
-        for kk in range(k):
-            ii = nbrs[0, kk]
-            jj = nbrs[1, kk]
-            if arr[ii, jj] is not missing_value:
-                if ca[ii, jj] == 0:# and va[pos] == 0:   # pixel not yet in catchment
-                    if arr[ii, jj] >= x:
-                        ca[ii, jj] = 1
-                        ca_idx[0, ca_np] = ii
-                        ca_idx[1, ca_np] = jj
-                        ca_np += 1
-        idx += 1
-        if idx == ca_np:
-            trapped = True
-    ca_idx = ca_idx[:, :ca_np]
-    return ca, ca_idx, ca_np
-
-def fill_multi_pixel(np.ndarray[FLOAT_t, ndim=2] arr not None,
-                     list sinks,
-                     np.ndarray[FLOAT_t, ndim=1] fval
-                     ):
-    """
-    Fills multi-pixel depressions in given DEM array.
-    """
-    cdef list sink
-    cdef tuple loc
-    cdef int k
-    cdef float f
-    k = 0
-    for sink in sinks:
-        f = fval[k]
-        for loc in sink:
-            arr[loc] = f
-        k += 1
-    return arr
-
-def neighbour_indices(int i, int j, int nx, int ny):
-    """
-    Returns indices & no. of neighbours depending on location of (i, j).
-    """
-    ### From the point of view of neighbourhood indices, 
-    ### for each of nx or ny, we find 3 possibilities:
-    ###     A. n >= 3
-    ###     B. n = 2
-    ###     C. n = 1
-    ###
-    ### For nx pr ny falling in each of the 3 cases above, we find
-    ### 9 different possibilities:
-    ###      Case       nx      ny
-    ###         1       A       A
-    ###         2       A       B
-    ###         3       B       A
-    ###         4       B       B
-    ###         5       B       C
-    ###         6       C       B
-    ###         7       C       C
-    ###         8       A       C
-    ###         9       C       A
-    ###
-    ### Below, we outline the different possible neighbour indices
-    ### for each of the above 9 cases.
-    ###
-    ###
-    cdef list i_range
-    cdef list j_range
-    ###
-    ###
-    if nx >= 3 and ny >= 3:   # a min. of 3x3 array
-        ###
-        ### Case 1. nx >= 3 and ny >=3
-        ###
-        ###### set i range
-        if i == 0:
-            i_range = [0, 1]
-        elif i == nx - 1:
-            i_range = [nx - 2, nx - 1]
-        else:
-            i_range = range(i - 1, i + 2)
-        ###### set j range
-        if j == 0:
-            j_range = [0, 1]
-        elif j == ny - 1:
-            j_range = [ny - 2, ny - 1]
-        else:
-            j_range = range(j - 1, j + 2)
-        ###
-        ###
-    elif nx >= 3 and ny == 2:
-        ###
-        ### Case 2. nx >= 3 and ny = 2
-        ###
-        ###### set i range
-        if i == 0:
-            i_range = [0, 1]
-        elif i == nx - 1:
-            i_range = [nx - 2, nx - 1]
-        else:
-            i_range = range(i - 1, i + 2)
-        ###### set j range
-        j_range = [0, 1]
-        ###
-        ###
-    elif nx == 2 and ny >= 3:
-        ###
-        ### Case 3. nx = 2 and ny >= 3
-        ###
-        ###### set i range
-        i_range = [0, 1]
-        ###### set j range
-        if j == 0:
-            j_range = [0, 1]
-        elif j == ny - 1:
-            j_range = [ny - 2, ny - 1]
-        else:
-            j_range = range(j - 1, j + 2)
-        ###
-        ###
-    elif nx == 2 and ny == 2:
-        ###
-        ### Case 4. nx = 2 and ny = 2
-        ###
-        ###### set i range
-        i_range = [0, 1]
-        ###### set j range
-        j_range = [0, 1]
-        ###
-        ###
-    elif nx == 2 and ny == 1:
-        ###
-        ### Case 5. nx = 2 and ny = 1
-        ###
-        ###### set i range
-        i_range = [0, 1]
-        ###### set j range
-        j_range = [0]
-        ###
-        ###
-    elif nx == 1 and ny == 2:
-        ###
-        ### Case 6. nx = 1 and ny = 2
-        ###
-        ###### set i range
-        i_range = [0]
-        ###### set j range
-        j_range = [0, 1]
-        pass
-        ###
-        ###
-    elif nx == 1 and ny == 1:
-        ###
-        ### Case 7. nx = 1 and ny = 1
-        ###
-        ###### set i range
-        i_range = [0]
-        ###### set j range
-        j_range = [0]
-        ###
-        ###
-    elif nx >= 3 and ny == 1:
-        ###
-        ### Case 8. nx >= 3 and ny = 1
-        ###
-        ###### set i range
-        if i == 0:
-            i_range = [0, 1]
-        elif i == nx - 1:
-            i_range = [nx - 2, nx - 1]
-        else:
-            i_range = range(i - 1, i + 2)
-        ###### set j range
-        j_range = [0]
-        ###
-        ###
-    elif nx == 1 and ny >= 3:
-        ###
-        ### Case 9. nx = 2 and ny >= 3
-        ###
-        ###### set i range
-        i_range = [0]
-        ###### set j range
-        if j == 0:
-            j_range = [0, 1]
-        elif j == ny - 1:
-            j_range = [ny - 2, ny - 1]
-        else:
-            j_range = range(j - 1, j + 2)
-        ###
-        ###
-    ###
-    ###
-    ### Now, go through the range of i, j values and create a nbr list.
-    cdef int max_nbrs = 8
-    cdef np.ndarray[INT_t, ndim=2] nbrs = np.zeros([2, max_nbrs], dtype=INT)
-    cdef Py_ssize_t ii, jj
-    cdef Py_ssize_t k = 0
-    for ii in i_range:
-        for jj in j_range:
-            if not (ii == i and jj == j):
-                nbrs[0, k] = ii
-                nbrs[1, k] = jj
-                k += 1
-    nbrs = nbrs[:k]
-    return nbrs, k
-
-def sinks_in_catchment(np.ndarray[INT_t, ndim=2] ca not None,
-                       np.ndarray[INT_t, ndim=2] ca_idx not None,
-                       np.ndarray[INT_t, ndim=2] va not None
-                       ):
-    """
-    Returns multi-pixel sinks within a given catchment.
-    """
-    cdef np.ndarray[INT_t, ndim=1] row = ca_idx[0, :]
-    cdef np.ndarray[INT_t, ndim=1] col = ca_idx[1, :]
-    cdef int min_row = min(row)
-    cdef int max_row = max(row)
-    cdef int min_col = min(col)
-    cdef int max_col = max(col)
-    cdef int nr = max_row - min_row
-    cdef int nc = max_col - min_col
-    cdef int nx = ca.shape[0]
-    cdef int ny = ca.shape[1]
-    cdef np.ndarray[INT_t, ndim=2] s = np.zeros([nr, nc], dtype=INT)
-    cdef np.ndarray[INT_t, ndim=2] v = np.zeros([nr, nc], dtype=INT)
-    cdef np.ndarray[INT_t, ndim=2] c = np.zeros([nr, nc], dtype=INT)
-    c = ca[min_row:max_row, min_col:max_col]
-#     import matplotlib.pyplot as pl
-#     pl.imshow(c, cmap="gray_r", interpolation="none")
-#     pl.show()
-#     import sys
-#     sys.exit()
-    cdef int ii, jj
-    ii = 4 - min_row
-    jj = 4133 - min_col
-    cdef Py_ssize_t i, j, k
-    cdef list sinks = []
-    cdef ns = 0
-    cdef nv = 0
-    for i in range(nr):
-        for j in range(nc):
-            if c[i, j] == 0 and s[i, j] == 0:
-                s, s_id, nv = plateau_int(c, s, i, j, 
-                                          nr, nc, nv, c[i, j])
-                sinks.append(s_id)
-                ns += 1
-#     cdef np.ndarray[INT_t, ndim=2] S = np.zeros([nr, nc], dtype=INT)
-#     for i in range(ns):
-#         s_id = sinks[i]
-#         S[s_id[0], s_id[1]] = 2
-#     import matplotlib.pyplot as pl
-#     pl.imshow(c+S, cmap="jet", interpolation="none")
-#     pl.colorbar()
-#     pl.show()
-#     import sys
-#     sys.exit()
-    cdef list si = [0] * ns
-    k = 0
-    for i in range(ns):
-        s_id = sinks[i]
-        rlo = min(s_id[0])
-        rhi = max(s_id[0])
-        clo = min(s_id[0])
-        chi = max(s_id[0])
-        if not (rlo == 0 or clo == 0 or rhi == nr - 1 or chi == nc - 1):
-            si[k] = s_id
-            k += 1
-            c[s_id[0], s_id[1]] = 1
-            ca[s_id[0] + min_row, s_id[1] + min_col] = 1
-            va[s_id[0] + min_row, s_id[1] + min_col] = 1
-    va[ca_idx[0], ca_idx[1]] = 1
-    si = si[:k]
-#     import matplotlib.pyplot as pl
-#     pl.imshow(c, cmap="gray_r", interpolation="none")
-#     pl.show()
-#     import sys
-#     sys.exit()
-    return si, ca, va, nv
-
-def plateau_int(np.ndarray[INT_t, ndim=2] arr not None, 
-                np.ndarray[INT_t, ndim=2] sa not None,
-                int i, int j, int nr, int nc, int nv, int m,
-                ):
-    """
-    Returns the plateau region in given array starting at position i, j.
-    """
-    cdef list i_range, j_range
-    cdef list nbrs
-    cdef tuple pos
-    cdef Py_ssize_t u, v, k
-    cdef max_sa = (nr * nc) - nv
-    cdef np.ndarray[INT_t, ndim=2] s_id = np.zeros([2, max_sa], dtype=INT)
-    cdef num = 1
-    trapped = False
-    cdef Py_ssize_t idx = 0
-    s_id[0, idx] = i
-    s_id[1, idx] = j
-    if nr == 2 and nc == 1:
-        print "(i, j) ", i, j
-    while not trapped:
-        i = s_id[0, idx]
-        j = s_id[1, idx]
-        x = arr[i, j]
-        # get neighbour list
-        i_range, j_range = neighbour_indices(i, j, nr, nc)
-        k = 0
-        nbrs = [0] * 9
-        for u in i_range:
-            for v in j_range:
-                nbrs[k] = (u, v)
-                k += 1
-        nbrs = nbrs[:k]
-        # go through the nbr list and add to sink if necessary
-        for pos in nbrs:
-            if nr == 2 and nc == 1:
-                print "i, j", i, j
-                print "pos", pos
-                print "num, nv ", num, nv
-#                 import sys
-#                 sys.exit()
-            if sa[pos] == 0:   # i.e. pixel is not yet in sink
-                if arr[pos] == m:
-                    sa[pos] = 1
-                    try:
-                        s_id[0, num] = pos[0]
-                    except IndexError:
-                        print "(nr, nc)", nr, nc
-                        print "nbrs", nbrs
-                        print "pos", pos
-                        print "sa", sa
-                        raise IndexError, "something's wrong!"
-                    s_id[0, num] = pos[0]
-                    s_id[1, num] = pos[1]
-                    num += 1
-                    nv += 1
-        idx += 1
-        if idx == num:
-            trapped = True
-    s_id = s_id[:, :num]
-    return sa, s_id, nv
 
