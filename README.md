@@ -8,7 +8,7 @@ wholesome perspective that can supplement the traditional approaches which
 involve the analysis of the slope and curvatures of the only the river flows
 obtained from the DEMs. 
 
-**NOTE: This is a work in progress! There might be serious bugs in the code!**
+**NOTE: This is a work in progress! There might be bugs in the code!**
 
 Objectives
 ----------
@@ -49,7 +49,7 @@ cd addem/
 ```
 
 2. Use the Python setup file to install. You may also consider the use of
-   [Virtual Envinonments](http://docs.python-guide.org/en/latest/dev/virtualenvs/):
+   [Virtual Environments](http://docs.python-guide.org/en/latest/dev/virtualenvs/):
 ```bash
 python setup.py build
 python setup.py install
@@ -76,7 +76,7 @@ submodules as well.
 
 ```python
 help(addem) # shows help documentation on the entire module
-help(addem.flows) # shows help documentation on the flows submodule
+help(addem.sinks) # shows help documentation on the sinks submodule
 ```
 
 Code Example
@@ -116,5 +116,5 @@ About this file
 ---------------
 
 Created: Wed Mar 09, 2016  03:23PM
-Last modified: Tue May 03, 2016  02:19PM
+Last modified: Tue May 03, 2016  02:57PM
 
