@@ -1,8 +1,15 @@
 #! /usr/bin/env python
+"""
+Setup file for ADDEM
 
+Created: Wed Mar 16, 2016  02:41PM
+Last modified: Tue May 03, 2016  02:46PM
+
+"""
 import os
 from distutils.core import setup, Extension
 import numpy as np
+
 
 # Utility function to read the README file.
 # Source: http://pythonhosted.org/an_example_pypi_project/setuptools.html
@@ -11,6 +18,7 @@ import numpy as np
 # string in below ...
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
+
 
 setup(name='addem',
       version='0.0.1.dev1',
@@ -23,19 +31,19 @@ setup(name='addem',
       packages=['addem'],
       py_modules=['addem/flows', 'addem/distributions'],
       ext_package='addem',
-      ext_modules=[Extension('sinks', 
+      ext_modules=[Extension('sinks',
                              sources=['src/sinks.c'],
                              include_dirs=[np.get_include()],
-                            )
-                  ],
-      install_requires=['numpy'],      
+                             )
+                   ],
+      install_requires=['numpy'],
       classifiers=[
-          'Development Status :: 2 - Pre-Alpha',
-          'Intended Audience :: Developers',
-          'Intended Audience :: Science/Research',
-          'Programming Language :: Python :: 2.6',
-          'Programming Language :: Python :: 2.7',
-          'Topic :: Scientific/Engineering :: Physics',
-          ],
+                   'Development Status :: 2 - Pre-Alpha',
+                   'Intended Audience :: Developers',
+                   'Intended Audience :: Science/Research',
+                   'Programming Language :: Python :: 2.6',
+                   'Programming Language :: Python :: 2.7',
+                   'Topic :: Scientific/Engineering :: Physics',
+                   ],
       keywords='research climate geoscience'
-     )
+      )

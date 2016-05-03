@@ -42,71 +42,18 @@ categories of *goals* for the project:
 Installation
 ------------
 
-As this project is still in its development, we are going to use a hackish
-of way of downloading and using it. First, clone this GIT repository to a
-local directory ``dev_proj`` of your choice by:
-
+1. Clone the GitHub repository:
 ```bash
-cd ~
-mkdir ~/dev_prj # make new directory 'dev_proj' in your home folder
-cd dev_proj/
 git clone https://github.com/bedartha/addem.git
+cd addem/
 ```
 
-The next step is to add the above directory where you have the ``addem``
-codes to your default Python paths list, which is the list of directory
-locations on your computer where Python searches for modules. For this you
-need to create a ``.pythonstartup`` file in your home directory and specify
-a new environment variable ``PYTHONSTARTUP`` which stores the location of
-this variable.
-
+2. Use the Python setup file to install. You may also consider the use of
+   [Virtual Envinonments](http://docs.python-guide.org/en/latest/dev/virtualenvs/):
 ```bash
-cd ~
-touch .pythonstartup
+python setup.py build
+python setup.py install
 ```
-
-Now open the above file with your preferred text editor and add the
-following bit of Python code in it and save the changes.
-
-```python
-import sys, os
-home = os.path.expanduser("~")
-sys.path.append(home + "/dev_proj/addem/")
-del sys, os
-```
-
-**Note that normally it is not recommended to change the contents of your
-``sys.path``!!** However, until we develop a fully functional suite of codes
-that can be shipped with a working ``setup.py`` file, this is a simple way
-out for us to share the functionality of the codes given in this repository.
-
-Finally, open your profile file (which is typically ``~/.bashrc`` on Linux
-machines and ``~/.bash_profile`` on Mac OS X computers), and add the
-following lines of code to it.
-
-```bash
-# setting the PYTHONSTARTUP variable for custom Python settins on start
-export PYTHONSTARTUP=$HOME/.pythonstartup
-```
-
-Now, open a new terminal and update the changes to ``~/bashrc`` by running:
-
-```bash
-. ~/.bashrc
-```
-You can do the same for the ``~/.bash_profile`` as well.
-
-**Note**
-In some cases, if you are running a script ``script.py`` which needs to use
-the ``addem`` module, the above might not work. In this case, you need to
-add the following line to your ``~/.bashrc`` as well.
-
-```bash
-export PYTHONPATH=$HOME/dev_proj/addem
-```
-
-That's it! Now you are ready to use the ``addem`` module.
-
 
 Usage
 -----
@@ -169,5 +116,5 @@ About this file
 ---------------
 
 Created: Wed Mar 09, 2016  03:23PM
-Last modified: Fri Mar 11, 2016  04:09PM
+Last modified: Tue May 03, 2016  02:19PM
 
