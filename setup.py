@@ -3,7 +3,7 @@
 Setup file for ADDEM
 
 Created: Wed Mar 16, 2016  02:41PM
-Last modified: Tue May 03, 2016  02:52PM
+Last modified: Tue May 03, 2016  03:48PM
 
 """
 import os
@@ -21,6 +21,17 @@ def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 
+# define extension module objects to pass as args to setup()
+ext_mod_sinks = Extension('sinks',
+                          sources=['src/sinks.c'],
+                          include_dirs=[np.get_include()],
+                          )
+ext_mod_flows = Extension('flows',
+                          sources=['src/flows.c'],
+                          include_dirs=[np.get_include()],
+                          )
+
+
 setup(name='addem',
       version=addem.__version__,
       description='Analysis of Distributions from Digital Elevation Models',
@@ -30,13 +41,12 @@ setup(name='addem',
       url='https://github.com/bedartha/addem',
       license='GNU',
       packages=['addem'],
-      py_modules=['addem/flows', 'addem/distributions'],
+      py_modules=['addem/distributions'],
       ext_package='addem',
-      ext_modules=[Extension('sinks',
-                             sources=['src/sinks.c'],
-                             include_dirs=[np.get_include()],
-                             )
-                   ],
+      ext_modules=[
+                    ext_mod_sinks,
+                    ext_mod_flows,
+                    ],
       install_requires=['numpy'],
       classifiers=[
                    'Development Status :: 2 - Pre-Alpha',
