@@ -2,7 +2,7 @@
 SINKS.PYX
 
 Created: Wed Mar 16, 2016  02:41PM
-Last modified: Wed Apr 27, 2016  06:19PM
+Last modified: Fri Apr 29, 2016  04:27PM
 
 """
 
@@ -150,7 +150,7 @@ def fill(np.ndarray[FLOAT_t, ndim=2] arr not None,
     return arr_out
 
 @cython.boundscheck(False) # turn off bounds-checking for this function
-def data_pixels(np.ndarray[FLOAT_t, ndim=2] arr not None, 
+def data_pixels(np.ndarray[FLOAT_t, ndim=2] arr not None,
                 int nx, int ny, float missing_value):
     """
     Returns indices of data pixels in DEM array.
@@ -169,10 +169,10 @@ def data_pixels(np.ndarray[FLOAT_t, ndim=2] arr not None,
     return dp_ind, dp_num
 
 @cython.boundscheck(False) # turn off bounds-checking for this function
-cdef check_if_sink(np.ndarray[FLOAT_t, ndim=2] arr, 
+cdef check_if_sink(np.ndarray[FLOAT_t, ndim=2] arr,
                    np.ndarray[INT_t, ndim=2] va_global,
-                   Py_ssize_t i, Py_ssize_t j, 
-                   int nx, int ny, int dp_num, 
+                   Py_ssize_t i, Py_ssize_t j,
+                   int nx, int ny, int dp_num,
                    float missing_value):
     """
     Returns flatland at (i, j); min. of bordering pixels; and if way down.
@@ -253,7 +253,7 @@ cdef check_if_sink(np.ndarray[FLOAT_t, ndim=2] arr,
     return is_sink, va_global
 
 @cython.boundscheck(False) # turn off bounds-checking for this function
-def floodfill(np.ndarray[FLOAT_t, ndim=2] arr, # not None, 
+def floodfill(np.ndarray[FLOAT_t, ndim=2] arr, # not None,
               np.ndarray[INT_t, ndim=2] va_global, # not None,
               Py_ssize_t i, Py_ssize_t j, int nx, int ny, int dp_num):
     """
