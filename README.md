@@ -42,13 +42,13 @@ categories of *goals* for the project:
 Installation
 ------------
 
-1. Clone the GitHub repository:
+* Clone the GitHub repository:
 ```bash
 git clone https://github.com/bedartha/addem.git
 cd addem/
 ```
 
-2. Use the Python setup file to install. You may also consider the use of
+* Use the Python setup file to install. You may also consider the use of
    [Virtual Environments](http://docs.python-guide.org/en/latest/dev/virtualenvs/):
 ```bash
 python setup.py build
@@ -116,5 +116,5 @@ About this file
 ---------------
 
 Created: Wed Mar 09, 2016  03:23PM
-Last modified: Tue May 03, 2016  02:57PM
+Last modified: Tue May 03, 2016  03:00PM
 
