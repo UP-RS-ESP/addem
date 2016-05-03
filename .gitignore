@@ -43,3 +43,7 @@ Thumbs.db
 # VIM swap files #
 ##################
 *.swp
+
+# Rope Project files #
+######################
+*.ropeproject
