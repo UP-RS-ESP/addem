@@ -3,12 +3,13 @@
 Setup file for ADDEM
 
 Created: Wed Mar 16, 2016  02:41PM
-Last modified: Tue May 03, 2016  02:46PM
+Last modified: Tue May 03, 2016  02:52PM
 
 """
 import os
 from distutils.core import setup, Extension
 import numpy as np
+import addem
 
 
 # Utility function to read the README file.
@@ -21,7 +22,7 @@ def read(fname):
 
 
 setup(name='addem',
-      version='0.0.1.dev1',
+      version=addem.__version__,
       description='Analysis of Distributions from Digital Elevation Models',
       long_description=read('README.md'),
       author='Bedartha Goswami',
